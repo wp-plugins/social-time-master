@@ -84,8 +84,6 @@ Please watch the video below on full screen to see all the details:</p><br />
 
 <div style='text-align: center;'>[youtube http://www.youtube.com/watch?v=3iqF3pwgYa4]</div>
 <br /><br />
-http://www.youtube.com/watch?v=3iqF3pwgYa4
-<br /><br />
 
 
 
