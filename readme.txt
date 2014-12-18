@@ -1,5 +1,5 @@
 === Plugin Name ===
-Contributors: wiziva
+Contributors: webily
 Donate link: http://webily.com/donate/
 Tags: 
 Requires at least: 3.0.1
@@ -8,7 +8,7 @@ Stable tag: 1.0.0
 License: GPLv2 or later
 License URI: http://www.gnu.org/licenses/gpl-2.0.html
 
-Social Time Master is an incredible original social autoposter that lets you schedule hundreds of social posts with a few clicks of the mouse.
+Social Time Master is a unique social autoposter that lets you schedule hundreds of social posts with a few clicks of the mouse.
 
 
 == Description ==
@@ -81,7 +81,10 @@ Now when we have this template <strong>it is a matter of one click to schedule e
 <h3>See how we are using the templates<br />to schedule the sharing of our blog posts</h3>
 <p>After we have created some templates, let's see how we schedule the social sharing for our Blog Posts.<br />
 Please watch the video below on full screen to see all the details:</p><br />
-<center><iframe width="660" height="370" src="//www.youtube.com/embed/3iqF3pwgYa4" frameborder="0" allowfullscreen></iframe></center>
+
+<div style='text-align: center;'>[youtube http://www.youtube.com/watch?v=3iqF3pwgYa4]</div>
+<br /><br />
+http://www.youtube.com/watch?v=3iqF3pwgYa4
 <br /><br />
 
 
