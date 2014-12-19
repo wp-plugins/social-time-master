@@ -4,7 +4,7 @@
 	Plugin Name: Social Time Master
 	Plugin URI: http://www.socialtimemaster.com
 	Description: Social Time Master is a social autoposter, which brings the power of one click scheduling, posting to unlimited social accounts, bit.ly integration with click stats, visual management of the posts with a Timeline component.
-	Version: 1.0.0
+	Version: 1.0.5
 	Author: Stanil Dobrev
 	Author URI: http://www.wiziva.com
     Copyright 2014 wiziva.com (email : support@wiziva.com)
