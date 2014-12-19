@@ -2,24 +2,12 @@
 
 class STMPlugin {
 
-	public function STMPlugin() {
+	public function __construct() {
 		global $wp_scripts;
 		if (is_admin()) {
 			add_action('admin_menu', array($this, 'adminMenu'));
-			add_action('admin_enqueue_scripts', array($this, 'stmjs'));
 			add_action('wp_ajax_stmjs', array($this, 'stmajax'));
-			if ((isset($_GET['page']) && strpos(' '.$_GET['page'], 'stm')) || (strpos($_SERVER['REQUEST_URI'], 'post-new.php')) || (strpos($_SERVER['REQUEST_URI'], 'post.php'))) {
-				wp_enqueue_script('jquery');
-				wp_enqueue_script('jquery-ui-core');
-				wp_enqueue_script('jquery-ui-dialog');
-				wp_enqueue_script('jquery-ui-datepicker');
-				wp_enqueue_script('jquery-ui-position');
-				wp_enqueue_style('jquery-ui-smoothness', STM_URL.'jquery-ui.min.css');
-				wp_register_script('smtimepicker', STM_URL.'jquery.ui.timepicker.js');
-				wp_enqueue_script('smtimepicker');
-				wp_register_style('socialtimemaster', STM_URL.'stm.css');
-				wp_enqueue_style('socialtimemaster');
-			}
+			add_action('admin_enqueue_scripts', array($this, 'stmjs'));
 			add_action('edit_form_advanced', array($this, 'editPost'));
 			add_action('edit_page_form', array($this, 'editPost'));
 			add_action('edit_post', array($this, 'savePost'));
@@ -31,15 +19,15 @@ class STMPlugin {
 			add_action('init', array($this, 'Cron'));
 			add_action('wp_head', array($this, 'PostMeta'));
 		}
+		//add_filter('default_title', array($this,'defTitle') );
 	}
-
 
 	function DoPost($info, $dodelete=1) {
 		global $wpdb;
 		//return 'http://done.com';
 		foreach ($info as $k=>$v) $info[$k] = stripslashes(stripslashes($v));
 		$tm = time();
-		$stub = $wpdb->get_results("SELECT * FROM {$wpdb->prefix}stm_accounts WHERE (id=$info[accountid]) AND (auth3<>'');");
+		$stub = $wpdb->get_results($wpdb->prepare("SELECT * FROM {$wpdb->prefix}stm_accounts WHERE (id=%d) AND (auth3<>'');", $info['accountid']));
 		if (!count($stub)) return '';
 		$account = (array)$stub[0];
 		if ($account['paused']) return '';
@@ -79,7 +67,7 @@ class STMPlugin {
 			}
 			//Array ( [errors] => Array ( [0] => Array ( [message] => Bad Authentication data [code] => 215 ) ) ) 
 			if (isset($ret['errors'])) {
-				if ($ret['errors'][0]['code'] == 215) $wpdb->query("UPDATE {$wpdb->prefix}stm_accounts SET auth3='' WHERE id=$info[accountid];");
+				if ($ret['errors'][0]['code'] == 215) $wpdb->query($wpdb->prepare("UPDATE {$wpdb->prefix}stm_accounts SET auth3='' WHERE id=%d;", $info['accountid']));
 				return 'err-'.$ret['errors'][0]['message'];
 			}
 			$userid = $ret['user']['screen_name'];
@@ -140,7 +128,7 @@ class STMPlugin {
 				$atype = 'fbacc';
 			}
 			if (isset($ret['error'])) {
-				if ($ret['error']['type'] == 'OAuthException') $wpdb->query("UPDATE {$wpdb->prefix}stm_accounts SET auth3='' WHERE id=$info[accountid];");
+				if ($ret['error']['type'] == 'OAuthException') $wpdb->query($wpdb->prepare("UPDATE {$wpdb->prefix}stm_accounts SET auth3='' WHERE id=%d;", $info['accountid']));
 				return 'err-'.$ret['error']['message'];
 			}
 			//ret: Array ( [error] => Array ( [message] => (#803) Some of the aliases you requested do not exist: a469946106440103 [type] => OAuthException [code] => 803 ) ) 
@@ -172,7 +160,7 @@ class STMPlugin {
 			if (strpos(' '.$response, '<error>')) {
 				$err = $this->GetBetweenTags($response, '<error>', '</error>');
 				$status = $this->GetBetweenTags($err, '<status>', '</status>');
-				if ($status == 401) $wpdb->query("UPDATE {$wpdb->prefix}stm_accounts SET auth3='' WHERE id=$info[accountid];");
+				if ($status == 401) $wpdb->query($wpdb->prepare("UPDATE {$wpdb->prefix}stm_accounts SET auth3='' WHERE id=%d;", $info['accountid']));
 				$msg = $this->GetBetweenTags($err, '<message>', '</message>');
 				return 'err-'.$msg;
 			}
@@ -202,7 +190,7 @@ class STMPlugin {
 			}
 			//ret: stdClass Object ( [meta] => stdClass Object ( [status] => 401 [msg] => Not Authorized ) [response] => Array ( ) ) 
 			if (isset($post->meta->status) && ($post->meta->status == 401)) {
-				$wpdb->query("UPDATE {$wpdb->prefix}stm_accounts SET auth3='' WHERE id=$info[accountid];");
+				$wpdb->query($wpdb->prepare("UPDATE {$wpdb->prefix}stm_accounts SET auth3='' WHERE id=%d;", $info['accountid']));
 				return 'err-'.$post->meta->msg;
 			}
 			if (isset($post->meta->status) && ($post->meta->status != 201)) return 'err-'.$post->meta->msg;
@@ -212,9 +200,9 @@ class STMPlugin {
 		}
 		if ($posturl) {
 			$postcontent = addslashes($postcontent);
-			$wpdb->query("INSERT INTO {$wpdb->prefix}stm_postlog (variationid, postid, atype, aname, userid, rpostid, url, bitly, posturl, ptime, content, numvar) VALUES ($info[variationid], $info[postid], '$atype', '$account[username]', '$userid', '$postid', '$url', '$bitly', '$posturl', $tm, '$postcontent', '$info[numvar]');");
-			$wpdb->query("UPDATE {$wpdb->prefix}stm_urls SET numshares=numshares+1 WHERE bitly='$bitly';");
-			$wpdb->query("UPDATE {$wpdb->prefix}stm_schedule SET lastposttime=$tm, repdone=repdone+1 WHERE id=$info[scheduleid];");
+			$wpdb->query($wpdb->prepare("INSERT INTO {$wpdb->prefix}stm_postlog (variationid, postid, atype, aname, userid, rpostid, url, bitly, posturl, ptime, content, numvar) VALUES (%d, %d, %s, %s, %d, %d, %s, %s, %s, %d, %s, %d);", $info['variationid'], $info['postid'], $atype, $account['username'], $userid, $postid, $url, $bitly, $posturl, $tm, $postcontent, $info['numvar']));
+			$wpdb->query($wpdb->prepare("UPDATE {$wpdb->prefix}stm_urls SET numshares=numshares+1 WHERE bitly=%s;", $bitly));
+			$wpdb->query($wpdb->prepare("UPDATE {$wpdb->prefix}stm_schedule SET lastposttime=%d, repdone=repdone+1 WHERE id=%d;", $tm, $info['scheduleid']));
 			$wpdb->query("DELETE FROM {$wpdb->prefix}stm_schedule WHERE (id=$info[scheduleid]) AND (NOT repcount);"); //delete if there are no repeats
 			$wpdb->query("DELETE FROM {$wpdb->prefix}stm_schedule WHERE (id=$info[scheduleid]) AND (repcount<>0) AND (repcount=repdone);"); //delete if it is repeats and all done
 		}
@@ -227,20 +215,20 @@ class STMPlugin {
 		global $wpdb;
 		//return '';
 		$tm = time();
-		$stmlastcron = get_settings('stmlastcron');
+		$stmlastcron = get_option('stmlastcron');
 		if (!$stmlastcron) $stmlastcron = $tm-70;
 		if ($stmlastcron > $tm-60) return ''; //every minute
 		if (isset($_GET['d'])) echo 'cron started...<br />';
 		$accids = array();
 		$tm2 = $tm-1800; //post only these from the last half an hour... older which are missed to be posted will be skipped to prevent spamming
-		$data = $wpdb->get_results("SELECT t.*, v.*, t.id as tlid FROM {$wpdb->prefix}stm_timeline as t LEFT JOIN {$wpdb->prefix}stm_variations as v ON t.variationid=v.id WHERE (posttime<=$tm) && (posttime>$tm2);");
+		$data = $wpdb->get_results($wpdb->prepare("SELECT t.*, v.*, t.id as tlid FROM {$wpdb->prefix}stm_timeline as t LEFT JOIN {$wpdb->prefix}stm_variations as v ON t.variationid=v.id WHERE (posttime<=%d) && (posttime>%d);", $tm, $tm2));
 		foreach ($data as $k=>$info) {
 			$info = (array)$info;
 			if (in_array($info['accountid'], $accids)) continue;
 			$ret = $this->DoPost($info);
 			if (!strpos(' '.$ret, 'err-')) array_push($accids, $info['accountid']);
 		}
-		$stmlastvercheck = get_settings('stmlastvercheck');
+		$stmlastvercheck = get_option('stmlastvercheck');
 		if (!$stmlastvercheck) $stmlastvercheck = $tm-43201;
 		if ($stmlastvercheck > $tm-43200) { //12 hours
 			$lastver = file_get_contents('http://wiziva.com/?lastver='.STM_WIZIVA_ID);
@@ -258,13 +246,13 @@ class STMPlugin {
 
 	function PostMeta() {
 		global $post, $wpdb;
-		$nocards = get_settings('stmnocards');
-		$noog = get_settings('stmnoog');
+		$nocards = get_option('stmnocards');
+		$noog = get_option('stmnoog');
 		if ($nocards && $noog) return '';
 		$postid = $post->ID;
 		if (!isset($_GET['stmv'])) $_GET['stmv'] = 0;
 		$title = '';
-		$data = $wpdb->get_results("SELECT * FROM {$wpdb->prefix}stm_variations WHERE (postid=$postid) AND (numvar=$_GET[stmv])");
+		$data = $wpdb->get_results($wpdb->prepare("SELECT * FROM {$wpdb->prefix}stm_variations WHERE (postid=%d) AND (numvar=%d)", $postid, $_GET['stmv']));
 		if (count($data)) {
 			$info = (array)$data[0];
 			$title = $info['title'];
@@ -287,9 +275,9 @@ class STMPlugin {
 		//https://cards-dev.twitter.com/validator
 		//https://developers.facebook.com/tools/debug/og/object/
 		if (!$nocards) {
-			$stmtwiuser = get_settings('stmtwiuser');
-			$stmtwisite = get_settings('stmtwisite');
-			$stmcardformat = get_settings('stmcardformat');
+			$stmtwiuser = get_option('stmtwiuser');
+			$stmtwisite = get_option('stmtwisite');
+			$stmcardformat = get_option('stmcardformat');
 			if (!$stmcardformat) $stmcardformat = 1;
 			if ($stmcardformat == 1) { //Summary with Large Image
 				echo "
@@ -345,17 +333,17 @@ class STMPlugin {
 
 	function BitLyURL($url) {
 		global $wpdb;
-		$bitly = $wpdb->get_var("SELECT bitly FROM {$wpdb->prefix}stm_urls WHERE url='$url'");
+		$bitly = $wpdb->get_var($wpdb->prepare("SELECT bitly FROM {$wpdb->prefix}stm_urls WHERE url=%s", $url));
 		if ($bitly && strpos(' '.$bitly, 'http')) return $bitly;
 		$urle = urlencode($url);
-		$api = get_settings('stmbitly');
+		$api = get_option('stmbitly');
 		if (!$api) return $url;
 		$stub = json_decode(file_get_contents("https://api-ssl.bitly.com/v3/user/link_save?access_token=$api&longUrl=$urle"));
 		$bitly = $stub->data->link_save->link;
 		if ($bitly && strpos(' '.$bitly, 'http')) {
-			$id = $wpdb->get_var("SELECT id FROM {$wpdb->prefix}stm_urls WHERE url='$url'");
-			if ($id) $wpdb->query("UPDATE {$wpdb->prefix}stm_urls SET bitly='$bitly';");
-			else $wpdb->query("INSERT INTO {$wpdb->prefix}stm_urls (url, bitly) VALUES ('$url', '$bitly');");
+			$id = $wpdb->get_var($wpdb->prepare("SELECT id FROM {$wpdb->prefix}stm_urls WHERE url=%s;", $url));
+			if ($id) $wpdb->query($wpdb->prepare("UPDATE {$wpdb->prefix}stm_urls SET bitly=%s;", $bitly));
+			else $wpdb->query($wpdb->prepare("INSERT INTO {$wpdb->prefix}stm_urls (url, bitly) VALUES (%s, %s);", $url, $bitly));
 		}
 		return $bitly;
 	}
@@ -363,12 +351,12 @@ class STMPlugin {
 	function BitLyClicks($url, $doupdate=0) {
 		global $wpdb;
 		if ($doupdate) {
-			$api = get_settings('stmbitly');
+			$api = get_option('stmbitly');
 			$urle = urlencode($url);
 			$clicks = file_get_contents("https://api-ssl.bitly.com/v3/link/clicks?access_token=$api&link=$urle&format=txt");
-			$wpdb->query("UPDATE {$wpdb->prefix}stm_urls SET clickcount='$clicks' WHERE bitly='$url';");
+			$wpdb->query($wpdb->prepare("UPDATE {$wpdb->prefix}stm_urls SET clickcount=%d WHERE bitly=%s;", $clicks, $url));
 		}
-		else $clicks = $wpdb->get_var("SELECT clickcount FROM {$wpdb->prefix}stm_urls WHERE bitly='$url'");
+		else $clicks = $wpdb->get_var($wpdb->prepare("SELECT clickcount FROM {$wpdb->prefix}stm_urls WHERE bitly=%s", $url));
 		return $clicks;
 	}
 
@@ -386,7 +374,18 @@ class STMPlugin {
 	function stmjs() {
 		wp_enqueue_script('ajax-script', STM_URL.'stm.js', array('jquery') );
 		wp_localize_script('ajax-script', 'ajax_object', array('ajax_url' => admin_url('admin-ajax.php')));
+		wp_enqueue_script('jquery');
+		wp_enqueue_script('jquery-ui-core');
+		wp_enqueue_script('jquery-ui-dialog');
+		wp_enqueue_script('jquery-ui-datepicker');
+		wp_enqueue_script('jquery-ui-position');
+		wp_register_script('smtimepicker', STM_URL.'jquery.ui.timepicker.js');
+		wp_enqueue_script('smtimepicker');
+		wp_enqueue_style('jquery-ui-smoothness', STM_URL.'jquery-ui.min.css');
+		wp_register_style('socialtimemaster', STM_URL.'stm.css');
+		wp_enqueue_style('socialtimemaster');
 	}
+
 
 	function stmajax() {
 		if ($_POST['ajsub']=='main') $this->Ajax();
@@ -398,7 +397,7 @@ class STMPlugin {
 	function DefaultVariation($postid, $numvar) {
 		global $wpdb;
 		$title = get_the_title($postid);
-		$content = $wpdb->get_var("SELECT post_content FROM {$wpdb->prefix}posts WHERE ID=$postid");
+		$content = $wpdb->get_var($wpdb->prepare("SELECT post_content FROM {$wpdb->prefix}posts WHERE ID=%d", $postid));
 		$content = strip_tags($content);
 		if (!$content) $content = $title;
 		$imgurl = get_the_post_thumbnail($postid, 'large');
@@ -408,7 +407,7 @@ class STMPlugin {
 		$title = addslashes($title);
 		$content = $this->LimitLength($content, 300);
 		$content = addslashes($content);
-		$wpdb->query("INSERT INTO {$wpdb->prefix}stm_variations (postid, numvar, title, content, imgurl, url) VALUES ($postid, $numvar, '$title', '$content', '$imgurl', '$url');");
+		$wpdb->query($wpdb->prepare("INSERT INTO {$wpdb->prefix}stm_variations (postid, numvar, title, content, imgurl, url) VALUES (%d, %d, %s, %s, %s, %s);", $postid, $numvar, $title, $content, $imgurl, $url));
 		return $wpdb->insert_id;
 	}
 
@@ -436,13 +435,13 @@ class STMPlugin {
 				if (!trim($_POST['title']) && !trim($_POST['content'])) $err = 'Please enter Title or/and Content!';
 				elseif (!trim($_POST['url'])) $err = 'Please enter URL!';
 				else {
-					$variationid = $wpdb->get_var("SELECT variationid FROM {$wpdb->prefix}stm_timeline WHERE id=$id");
-					$postid = $wpdb->get_var("SELECT postid FROM {$wpdb->prefix}stm_variations WHERE id=$variationid");
+					$variationid = $wpdb->get_var($wpdb->prepare("SELECT variationid FROM {$wpdb->prefix}stm_timeline WHERE id=%d", $id));
+					$postid = $wpdb->get_var($wpdb->prepare("SELECT postid FROM {$wpdb->prefix}stm_variations WHERE id=%d", $variationid));
 					if (!$_POST['content']) $_POST['content'] = $_POST['title'];
 					if (!$_POST['title']) $_POST['title'] = $this->LimitLength($_POST['content'], 120);
 					$_POST['title'] = addslashes(stripslashes($_POST['title']));
 					$_POST['content'] = addslashes(stripslashes($_POST['content']));
-					$wpdb->query("UPDATE {$wpdb->prefix}stm_variations SET title='$_POST[title]', content='$_POST[content]', imgurl='$_POST[imgurl]', url='$_POST[url]' WHERE id=$variationid;");
+					$wpdb->query($wpdb->prepare("UPDATE {$wpdb->prefix}stm_variations SET title=%s, content=%s, imgurl=%s, url=%s WHERE id=%d;", $_POST['title'], $_POST['content'], $_POST['imgurl'], $_POST['url'], $variationid));
 					$t = '';
 					if ($postid) $t = "<a href='post.php?post=$postid&action=edit' target='_blank'>".get_the_title($postid).'</a>';
 					if (!$_POST['title']) $_POST['title'] = $_POST['content'];
@@ -457,170 +456,10 @@ class STMPlugin {
 				$moreops .= "document.getElementById('poperr').innerHTML=\"$err\"; document.getElementById('poperr').style.display='block'; setTimeout('HideErr()', 5000); AjaxLoadedSP();";
 				die($moreops);
 			break;
-			case 'addtotimeline':
-				$ptype = $_POST['ptype']; // 1 - Blog Post; 2 - Manual Entry; 3 - External URL; 4 - Tweet
-				$tm = $_GET['utm'];
-				$starttm = $_GET['starttm'];
-				$endtm = $_GET['endtm'];
-				$accountid = $_GET['accountid'];
-				$pxpersec = $_GET['pxpersec'];
-				$err = '';
-				if (isset($_POST['dorepeat'])) {
-					$reptype = $_POST['reptype'];
-					$repnum = $_POST['repnum'];
-					if (!$repnum) $err = 'Please select a repeat interval!';
-					if ($reptype == 'm') $repsec = 60*$repnum;
-					if ($reptype == 'h') $repsec = 3600*$repnum;
-					if ($reptype == 'd') $repsec = 24*3600*$repnum;
-					$repcount = $_POST['repcount'];
-					if (!$err && !$repcount) $err = 'Please select how many times the posting to be repeated!';
-				}
-				else {
-					$reptype = 'm';
-					$repnum = 0;
-					$repsec = 0;
-					$repcount = 0;
-				}
-				if ($err) {
-					$err = $this->Msg_Err($err);
-					$this->AjaxContent($err);
-					$moreops .= "document.getElementById('poperr').innerHTML=\"$err\"; document.getElementById('poperr').style.display='block'; setTimeout('HideErr()', 5000); AjaxLoadedSP();";
-					die($moreops);
-				}
-				$err = '';
-				switch($ptype) {
-					case 1:
-						$postid = $_POST['postid'];
-						if (!$postid) $err = 'Please select a Blog Post!';
-						if (!$err) {
-							$numvar = $_POST['varnum'];
-							if ($numvar == -1) {
-								$numvar = $wpdb->get_var("SELECT MAX(numvar) FROM {$wpdb->prefix}stm_variations WHERE postid=$postid");
-								$numvar++;
-								$wpdb->query("INSERT INTO {$wpdb->prefix}stm_variations (postid, numvar) VALUES ($postid, $numvar);");
-								$id = $wpdb->insert_id;
-								$url = $this->PostVarURL($postid, $numvar);
-								$_POST['title'] = addslashes($_POST['title']);
-								$_POST['content'] = $this->LimitLength($_POST['content'], 300);
-								$_POST['content'] = addslashes($_POST['content']);
-								$wpdb->query("UPDATE {$wpdb->prefix}stm_variations SET title='$_POST[title]', content='$_POST[content]', imgurl='$_POST[imgurl]', url='$url' WHERE id=$id;");
-							}
-							$variationid = $wpdb->get_var("SELECT id FROM {$wpdb->prefix}stm_variations WHERE (postid=$postid) AND (numvar=$numvar);");
-							$numschedule = $wpdb->get_var("SELECT MAX(numschedule) FROM {$wpdb->prefix}stm_schedule WHERE postid=$postid");
-							$numschedule++;
-							$wpdb->query("INSERT INTO {$wpdb->prefix}stm_schedule (postid, numschedule, numvar, intnum, inttype, intsec, repnum, repcount, reptype, repsec, accountid) VALUES ($postid, $numschedule, $numvar, 0, 'm', 0, $repnum, $repcount, '$reptype', $repsec, $accountid);");
-							$scheduleid = $wpdb->insert_id;
-						}
-					break;
-					case 2:
-						if (!trim($_POST['title'])) $err = 'Please enter Title!';
-						elseif (!trim($_POST['content'])) $err = 'Please enter Content!';
-						elseif (!trim($_POST['meurl'])) $err = 'Please enter URL!';
-						if (!$err) {
-							$_POST['title'] = addslashes($_POST['title']);
-							$_POST['content'] = $this->LimitLength($_POST['content'], 300);
-							$_POST['content'] = addslashes($_POST['content']);
-							$wpdb->query("INSERT INTO {$wpdb->prefix}stm_variations (postid, numvar, title, content, imgurl, url, starttm) VALUES (0, 0, '$_POST[title]', '$_POST[content]', '$_POST[imgurl]', '$_POST[meurl]', $tm);");
-							$variationid = $wpdb->insert_id;
-							$wpdb->query("INSERT INTO {$wpdb->prefix}stm_schedule (variationid, numschedule, numvar, intnum, inttype, intsec, repnum, repcount, reptype, repsec, accountid) VALUES ($variationid, 0, 0, 0, 'm', 0, $repnum, $repcount, '$reptype', $repsec, $accountid);");
-							$scheduleid = $wpdb->insert_id;
-						}
-					break;
-					case 3:
-						$url = trim($_POST['url']);
-						if (!$url) $err = 'Please enter URL!';
-						if (!$err) {
-							$metas = $this->ExtractURLMetas($url);
-							$title = addslashes($metas['title']);
-							$content = addslashes($metas['content']);
-							if (!$title) $title = 'Visit this site!';
-							$wpdb->query("INSERT INTO {$wpdb->prefix}stm_variations (title, content, imgurl, url, starttm) VALUES ('$title', '$content', '$metas[imgurl]', '$url', $tm);");
-							$variationid = $wpdb->insert_id;
-							$wpdb->query("INSERT INTO {$wpdb->prefix}stm_schedule (variationid, numschedule, numvar, intnum, inttype, intsec, repnum, repcount, reptype, repsec, accountid) VALUES ($variationid, 0, 0, 0, 'm', 0, $repnum, $repcount, '$reptype', $repsec, $accountid);");
-							$scheduleid = $wpdb->insert_id;
-						}
-					break;
-					case 4:
-						if (!trim($_POST['content2'])) $err = 'Please enter the Tweet text!';
-						if (!$err) {
-							$title = $this->LimitLength($_POST['content2'], 40);
-							$title = addslashes($title);
-							$_POST['content2'] = $this->LimitLength($_POST['content2'], 120);
-							$_POST['content2'] = addslashes($_POST['content2']);
-							$wpdb->query("INSERT INTO {$wpdb->prefix}stm_variations (postid, numvar, title, content, starttm, url) VALUES (0, 0, '$title', '$_POST[content2]', $tm, '$_POST[url2]');");
-							$variationid = $wpdb->insert_id;
-							$wpdb->query("INSERT INTO {$wpdb->prefix}stm_schedule (variationid, numschedule, numvar, intnum, inttype, intsec, repnum, repcount, reptype, repsec, accountid) VALUES ($variationid, 0, 0, 0, 'm', 0, $repnum, $repcount, '$reptype', $repsec, $accountid);");
-							$scheduleid = $wpdb->insert_id;
-						}
-					break;
-				}
-				if ($err) {
-					$err = $this->Msg_Err($err);
-					$this->AjaxContent($err);
-					$moreops .= "document.getElementById('poperr').innerHTML=\"$err\"; document.getElementById('poperr').style.display='block'; setTimeout('HideErr()', 5000); AjaxLoadedSP();";
-					die($moreops);
-				}
-				//add the first post and any repeats
-				$posttime = 0;
-				$numvar = 0;
-				$wpdb->query("UPDATE {$wpdb->prefix}stm_timeline SET isnew=0 WHERE 1;");
-				while (1) {
-					if (!$posttime) $posttime = $tm; //first post
-					else { //repeats
-						$posttime += $repsec;
-						$repcount--;
-					}
-					if ($ptype==1) {
-						$stub = $wpdb->get_var("SELECT id FROM {$wpdb->prefix}stm_variations WHERE (postid=$postid) AND (numvar=$numvar);");
-						if (!$stub) $variationid = $this->DefaultVariation($postid, $numvar);
-					}
-					if (($ptype==1) && ($_POST['varnum'] > 199)) { //blog post - deal with rotate and randomize
-						if ($_POST['varnum'] == 201) {
-							$maxnumvars = $wpdb->get_var("SELECT MAX(numvar) FROM {$wpdb->prefix}stm_variations WHERE (postid=$info[postid]) AND (numvar<200);");
-							$numvar = rand(0, $maxnumvars);
-						}
-						$variationid = $wpdb->get_var("SELECT id FROM {$wpdb->prefix}stm_variations WHERE (postid=$postid) AND (numvar=$numvar);");
-						$numvar++; // if it is 200 - rotate
-					}
-					$wpdb->query("INSERT INTO {$wpdb->prefix}stm_timeline (scheduleid, variationid, posttime, accountid, isnew) VALUES ($scheduleid, $variationid, $posttime, $accountid, 1);");
-					if (!$repcount) break;
-				}
-				//add the newly created posts to the timeline
-				$items = '';
-				$data = $wpdb->get_results("SELECT t.*, v.title, v.postid, v.url FROM {$wpdb->prefix}stm_timeline as t LEFT JOIN {$wpdb->prefix}stm_variations as v ON t.variationid=v.id WHERE (posttime>=$starttm) AND (posttime<=$endtm) AND (accountid=$accountid) AND isnew");
-				foreach ($data as $k=>$info) {
-					$info = (array)$info;
-					$secs = ($info['posttime']-$starttm)/3600;
-					$tpx = round($secs*$pxpersec).'px';
-					$info['posttime'] = $this->UserTime($info['posttime']);
-					$ptime = date('H:i', $info['posttime']);
-					$t = '';
-					if ($info['postid']) $t = "<a href='post.php?post=$info[postid]&action=edit' target='_blank'>".get_the_title($info['postid']).'</a>';
-					if ($t) $t .= ' - ';
-					$items .= "
-						<div class='item' style='top: $tpx;' onmousedown=\"ddInit(event, this);\" id='timel_$info[id]' onmouseup=\"AjaxActionSP('savetimeline&id=$info[id]', 'ptime_$info[id]');\">
-							<input type='hidden' name='ptime_$info[id]' id='ptime_$info[id]' value='$info[posttime]' />
-							<div class='tm' id='ptimeshow_$info[id]'>$ptime<span></span></div>
-							<div class='move' title='drag to move the post on the timeline'></div>
-							<div class='meta'>
-								<a href='$info[url]' target='_blank'><img src='".STM_URL."images/earth_find.png' align='absmiddle' class='icon' title='$info[url]' /></a>&nbsp;
-								<img src='".STM_URL."images/share.png' title='Share Now' class='iconlink' align='absmiddle' onclick=\"AjaxPopSP('sharenow&id=$info[id]');\" />&nbsp;
-								<img src='".STM_URL."images/edit.gif' title='Edit Posting' class='iconlink' align='absmiddle' onclick=\"AjaxPopSP('edittimeline&id=$info[id]');\" />&nbsp;
-								<img src='".STM_URL."images/delete.png' title='Delete' class='iconlink' align='absmiddle' onclick=\"AjaxActionSP('deltimeline&id=$info[id]');\" />&nbsp;&nbsp;&nbsp;&nbsp;
-								$t$info[title]
-							</div>
-						</div>
-					";
-				}
-				$wpdb->query("UPDATE {$wpdb->prefix}stm_timeline SET isnew=0 WHERE 1;");
-				$this->AjaxContent($items);
-				$moreops .= "document.getElementById('timeline').innerHTML=document.getElementById('timeline').innerHTML+\"$items\"; InPreferredAll(); TLNumPosts(); jQuery('#dialog-main').dialog('close'); AjaxLoadedSP();";
-				die($moreops);
-			break;
 			case 'setpreftime':
 				$prefstart = $_POST['prefstart'];
 				$prefend = $_POST['prefend'];
-				$wpdb->query("UPDATE {$wpdb->prefix}stm_accounts SET prefstart='$prefstart', prefend='$prefend' WHERE id=$_GET[accountid];");
+				$wpdb->query($wpdb->prepare("UPDATE {$wpdb->prefix}stm_accounts SET prefstart=%s, prefend=%s WHERE id=%d;", $prefstart, $prefend, $_GET['accountid']));
 				$content = '';
 				$prefh = 0;
 				$height = 1440;
@@ -646,19 +485,10 @@ class STMPlugin {
 						$prefh .= 'px';
 					}
 					$preft .= 'px';
-					$content .= "<div class='lineprefered' id='pref_$i' onmouseover='ShowLinetime(event, 1);' onmouseout='ShowLinetime(event, 0);' onmousemove='LinetimePos(event);' ondblclick=\"AddToTimeline();\" style='top: $preft; height: $prefh;'></div>";
+					$content .= "<div class='lineprefered' id='pref_$i' onmouseover='ShowLinetime(event, 1);' onmouseout='ShowLinetime(event, 0);' onmousemove='LinetimePos(event);' ondblclick=\"AjaxPopSP('addtotimeline');\" style='top: $preft; height: $prefh;'></div>";
 				}
 				$this->AjaxContent($content);
 				$moreops .= "document.getElementById('prefsbox').innerHTML=\"$content\"; InPreferredAll(); jQuery('#dialog-main').dialog('close'); AjaxLoadedSP();";
-				die($moreops);
-			break;
-			case 'savetimelineall':
-				foreach ($_POST as $k=>$ptime) if (substr($k, 0, 6) == 'ptime_') {
-					$id = substr($k, 6);
-					$ptime -= $this->UserOffset();
-					$wpdb->query("UPDATE {$wpdb->prefix}stm_timeline SET posttime=$ptime WHERE id=$id;");
-				}
-				$moreops .= "document.getElementById('savebutbox').style.display='none'; document.getElementById('savelnk').style.display='none'; AjaxLoadedSP();";
 				die($moreops);
 			break;
 			case 'distribute':
@@ -686,18 +516,18 @@ class STMPlugin {
 						$auth1 = $_POST[$abbr.'auth1'];
 						$auth2 = $_POST[$abbr.'auth2'];
 						if ($_POST['id']) {
-							$wpdb->query("UPDATE {$wpdb->prefix}stm_accounts SET username='$username', auth1='$auth1', auth2='$auth2', auth3='', auth4='', info='', prefstart='$_POST[prefstart]', prefend='$_POST[prefend]' WHERE id=$_POST[id];");
+							$wpdb->query($wpdb->prepare("UPDATE {$wpdb->prefix}stm_accounts SET username=%s, auth1=%s, auth2=%s, auth3='', auth4='', info='', prefstart=%s, prefend=%s WHERE id=%d;", $username, $auth1, $auth2, $_POST['prefstart'], $_POST['prefend'], $_POST['id']));
 							$id = $_POST['id'];
 						}
 						else {
-							$wpdb->query("INSERT INTO {$wpdb->prefix}stm_accounts (atype, username, auth1, auth2, prefstart, prefend) VALUES ('$_POST[atype]', '$username', '$auth1', '$auth2', '$_POST[prefstart]', '$_POST[prefend]');");
+							$wpdb->query($wpdb->prepare("INSERT INTO {$wpdb->prefix}stm_accounts (atype, username, auth1, auth2, prefstart, prefend) VALUES (%s, %s, %s, %s, %s, %s);", $_POST['atype'], $username, $auth1, $auth2, $_POST['prefstart'], $_POST['prefend']));
 							$id = $wpdb->insert_id;
 						}
 						$info = '';
 						if (($abbr=='fb') && (isset($_POST['imppages']))) $info .= ',imppages';
 						if (($abbr=='fb') && (isset($_POST['impgroups']))) $info .= ',impgroups';
 						if (($abbr=='fb') && (isset($_POST['admingroups']))) $info .= ',admingroups';
-						if ($info) $wpdb->query("UPDATE {$wpdb->prefix}stm_accounts SET info='$info' WHERE id=$id;");
+						if ($info) $wpdb->query($wpdb->prepare("UPDATE {$wpdb->prefix}stm_accounts SET info=%s WHERE id=%d;", $info, $id));
 					}
 				}
 				if ($err) {
@@ -724,11 +554,31 @@ class STMPlugin {
 		$g = '';
 		foreach($_GET as $k=>$v) if (($k != 'pg') && ($k != 's')) $g .= "&$k=$v";
 		switch($_GET['pg']) {
+			case 'addtotimeline':
+				$_GET['w'] = 500; $_GET['h'] = 400;
+				$title = 'Adding Post to the Timeline...';
+				$content = "
+					You can add posts directly on the timeline only in the Pro version of the plugin.
+					To unlock this and lot more great features and to get a premium support please get the Pro version of the plugin here:<br /><br />
+					<center><a href='http://wiziva.com/stm/pro.php' target='_blank'>Social Time Master Pro<br />[discounted offer]</a></center>
+				";
+				$dialbuttons = "'Close': function() { jQuery(this).dialog('close'); }";
+			break;
+			case 'savetimelineall':
+				$_GET['w'] = 500; $_GET['h'] = 400;
+				$title = 'Saving Timeline Changes...';
+				$content = "
+					With the free version of the plugin you can use the Timeline only to preview the postings and You can not save the changes you make here.<br />
+					To unlock the saving functionality and get lot more great features please get the Pro version of the plugin here:<br /><br />
+					<center><a href='http://wiziva.com/stm/pro.php' target='_blank'>Social Time Master Pro<br />[discounted offer]</a></center>
+				";
+				$dialbuttons = "'Close': function() { jQuery(this).dialog('close'); }";
+			break;
 			case 'tlsettings':
 				$_GET['w'] = 600; $_GET['h'] = 400;
 				$title = 'Timeline Settings';
-				$tlheight = get_settings('tlheight');
-				$noanim = get_settings('stmnoanim');
+				$tlheight = get_option('tlheight');
+				$noanim = get_option('stmnoanim');
 				$ch = $noanim?' checked':'';
 				if (!$tlheight) $tlheight = 0;
 				$content = "
@@ -746,15 +596,15 @@ class STMPlugin {
 				$_GET['w'] = 760; $_GET['h'] = 480;
 				$title = 'Edit Posting';
 				$id = $_GET['id'];
-				$info = $wpdb->get_results("SELECT accountid, posttime, variationid FROM {$wpdb->prefix}stm_timeline WHERE id=$id;");
+				$info = $wpdb->get_results($wpdb->prepare("SELECT accountid, posttime, variationid FROM {$wpdb->prefix}stm_timeline WHERE id=%d;", $id));
 				$info = (array)$info[0];
-				$ainfo = $wpdb->get_results("SELECT atype, username FROM {$wpdb->prefix}stm_accounts WHERE id=$info[accountid];");
+				$ainfo = $wpdb->get_results($wpdb->prepare("SELECT atype, username FROM {$wpdb->prefix}stm_accounts WHERE id=%d;", $info['accountid']));
 				$ainfo = (array)$ainfo[0];
 				$account = ucfirst($ainfo['atype']).' - '.$ainfo['username'];
-				$vinfo = $wpdb->get_results("SELECT * FROM {$wpdb->prefix}stm_variations WHERE id=$info[variationid];");
+				$vinfo = $wpdb->get_results($wpdb->prepare("SELECT * FROM {$wpdb->prefix}stm_variations WHERE id=%d;", $info['variationid']));
 				$vinfo = (array)$vinfo[0];
 				foreach ($vinfo as $k=>$v) $vinfo[$k] = stripslashes($v);
-				$info['posttime'] = date(get_settings('date_format'), $info['posttime']).', '.date(get_settings('time_format'), $info['posttime']);
+				$info['posttime'] = date(get_option('date_format'), $info['posttime']).', '.date(get_option('time_format'), $info['posttime']);
 				$img = $vinfo['imgurl']?"<img src='$vinfo[imgurl]' style='max-width: 140px; max-height: 140px;' />":'';
 				$len = strlen($vinfo['content']);
 				$content = "
@@ -777,7 +627,7 @@ class STMPlugin {
 			case 'setpreftime':
 				$_GET['w'] = 320; $_GET['h'] = 220;
 				$title = 'Set Prefered Posting Time';
-				$ainfo = $wpdb->get_results("SELECT atype, username, prefstart, prefend FROM {$wpdb->prefix}stm_accounts WHERE id=$_GET[accountid];");
+				$ainfo = $wpdb->get_results($wpdb->prepare("SELECT atype, username, prefstart, prefend FROM {$wpdb->prefix}stm_accounts WHERE id=%d;", $_GET['accountid']));
 				$ainfo = (array)$ainfo[0];
 				$ainfo['atype'] = ucfirst($ainfo['atype']);
 				$content = "
@@ -788,56 +638,6 @@ class STMPlugin {
 					</form>
 				";
 				$moreops .= "jQuery('#prefstart').blur();jQuery('#prefend').blur();jQuery('#prefstart').timepicker(); jQuery('#prefend').timepicker();";
-			break;
-			case 'addtotimeline':
-				$_GET['w'] = 800; $_GET['h'] = 560;
-				$title = 'Add New Post to Timeline';
-				$tm = date ('d.m.Y, H:i', $_GET['utm']+$this->UserOffset());
-				$accountid = $_GET['accountid'];
-				$atype = $wpdb->get_var("SELECT atype FROM {$wpdb->prefix}stm_accounts WHERE id='$accountid'");
-				$act = $wpdb->get_var("SELECT username FROM {$wpdb->prefix}stm_accounts WHERE id='$accountid'");
-				if ($atype=='twitter') $tweet = "<option value='4'>Tweet</option>";
-				else $tweet = "<option value='2'>Manual Entry</option>";
-				$aimg = "<img src='".STM_URL."images/$atype.png' title='$atype' align='absmiddle' width=16 height=16 />&nbsp;";
-				$content = "
-					<form mehtod='post' id='frm$_GET[pg]'>
-						Post Time: <strong>$tm</strong> &nbsp;&nbsp;&nbsp; Account: <strong>$aimg$act ($atype)</strong><br /><br />
-						<strong>Source:</strong> <select name='ptype' onchange=\"ShowOptDiv(this.value, 4);\"><option value='1'>Blog Post</option><option value='3'>External URL</option>$tweet</select><br /><br />
-						<div id='opt1'>
-							<table class='frm'>
-								<tr><th>Blog Post:</th><td>".$this->SelBlogPost('postid', 0, "onchange=\"AjaxActionSP('postvariations&id='+this.value);\"")."</td></tr>
-								<tr><th>Variation:</th><td id='varsbox'>-</td></tr>
-							</table>
-						</div>
-						<div id='opt2' style='display: none;'>
-							<div style='display: none;' id='meurl'>
-								<table class='frm'>
-									<tr><td style='width: 110px;'>URL:</td><td><input type='text' name='meurl' id='meurl' style='width: 540px;' value='' /></td><tr>
-								</table>
-							</div>
-							<table class='frm'>
-								<tr><td style='width: 110px;'>Title:</td><td><input type='text' name='title' id='title' style='width: 540px;' value='' /></td><tr>
-								<tr><td valign='top'>Content:<br /><br /><span class='tacount' id='count'>0</span></td><td><textarea name='content' id='content' style='width: 540px; height: 60px;' onkeyup=\"jQuery('#count').html(jQuery(this).val().length);\"></textarea><br /><small>put [url] where you'd like the URL to appear and <a href='admin.php?page=stm-settings' target='_blank'>integrate bit.ly</a> to be able to track click stats</small></td></tr>
-								<tr><td>Image URL:</td><td><input type='text' name='imgurl' id='imgurl' style='width: 540px;' value='' /></td><tr>
-							</table>
-						</div>
-						<div id='opt3' style='display: none;'>
-							<table class='frm'>
-								<tr><td>URL:</td><td><input type='text' name='url' id='url' style='width: 540px;' value='' /></td><tr>
-							</table><br />
-						</div>
-						<div id='opt4' style='display: none;'>
-							<table class='frm'>
-								<tr><td>URL:</td><td><input type='text' name='url2' id='url2' style='width: 540px;' value='' /></td><tr>
-								<tr><td valign='top'>Tweet:<br /><br /><span class='tacount' id='count2'>0</span></td><td><textarea name='content2' id='content2' style='width: 540px; height: 60px;' onkeyup=\"jQuery('#count2').html(jQuery(this).val().length);\"></textarea><br /><small>put [url] where you'd like the URL to appear and <a href='admin.php?page=stm-settings' target='_blank'>integrate bit.ly</a> to be able to track click stats</small></td></tr>
-							</table>
-						</div>
-						<br />
-						&nbsp;&nbsp;<input type='checkbox' name='dorepeat' id='dorepeat' value='1' onclick=\"if (this.checked) document.getElementById('repbox').style.display='inline'; else document.getElementById('repbox').style.display='none';\" /><label for='dorepeat'>Repeat</label> 
-						<span id='repbox' style='display:none'> every <input type='text' name='repnum' id='repnum' style='width: 50px;' value='' /> ".$this->SelIntType("reptype", 'h')." for <input type='text' name='repcount' id='repcount' style='width: 50px;' value='' /> times</span>
-					</form>
-					<div id='poperr'></div>
-				";
 			break;
 			case 'distribute':
 				$_GET['w'] = 600; $_GET['h'] = 380;
@@ -871,14 +671,14 @@ class STMPlugin {
 			case 'postlogdet':
 				$_GET['w'] = 600; $_GET['h'] = 300;
 				$title = 'Post Details';
-				$content = $wpdb->get_var("SELECT content FROM {$wpdb->prefix}stm_postlog WHERE id='$_GET[id]'");
+				$content = $wpdb->get_var($wpdb->prepare("SELECT content FROM {$wpdb->prefix}stm_postlog WHERE id=%d", $_GET['id']));
 				if (!$content) $content = 'n/a/';
 			break;
 			case 'sharenow':
 				$_GET['w'] = 600; $_GET['h'] = 300;
 				$title = 'Share Post';
 				$dialbuttons = "'Close': function() { jQuery(this).dialog('close'); }";
-				$data = $wpdb->get_results("SELECT t.*, v.*, t.id as tlid FROM {$wpdb->prefix}stm_timeline as t LEFT JOIN {$wpdb->prefix}stm_variations as v ON t.variationid=v.id WHERE t.id=$_GET[id];");
+				$data = $wpdb->get_results($wpdb->prepare("SELECT t.*, v.*, t.id as tlid FROM {$wpdb->prefix}stm_timeline as t LEFT JOIN {$wpdb->prefix}stm_variations as v ON t.variationid=v.id WHERE t.id=%d;", $_GET['id']));
 				if (!count($data)) $content = "<span style='color:red'>There's nothing to post!</span><br />";
 				else {
 					$info = (array)$data[0];
@@ -891,7 +691,7 @@ class STMPlugin {
 				}
 			break;
 			case 'addaccount':
-				$_GET['w'] = 500; $_GET['h'] = 460;
+				$_GET['w'] = 500; $_GET['h'] = 560;
 				$dispfacebook = 'none';
 				$disptwitter = 'none';
 				$displinkedin = 'none';
@@ -900,7 +700,7 @@ class STMPlugin {
 				if (isset($_GET['id'])) {
 					$id = $_GET['id'];
 					$title = 'Edit Social Account';
-					$data = $wpdb->get_results("SELECT * FROM {$wpdb->prefix}stm_accounts WHERE id=$_GET[id]");
+					$data = $wpdb->get_results($wpdb->prepare("SELECT * FROM {$wpdb->prefix}stm_accounts WHERE id=%d", $_GET['id']));
 					if (count($data)) $info = (array)$data[0];
 					$fld = 'disp'.$info['atype'];
 					$$fld = 'block';
@@ -926,7 +726,8 @@ class STMPlugin {
 								<tr><td colspan='2'><input type='checkbox' name='imppages' id='imppages' value='0' onclick=\"AjaxCB(this, 1)\" /> <label for='imppages'>Import Facebook Pages upon Authentication</label></td></tr>
 								<tr><td colspan='2'>
 									<input type='checkbox' name='impgroups' id='impgroups' value='0' onclick=\"AjaxCB(this, 1)\" /> <label for='impgroups'>Import Groups upon Authentication</label><br />
-									&nbsp;&nbsp;&nbsp;<input type='checkbox' name='admingroups' id='admingroups' value='1' onclick=\"AjaxCB(this, 1)\" checked /> <label for='admingroups'>Only the Groups where I'm an Admin</label>
+									&nbsp;&nbsp;&nbsp;<input type='checkbox' name='admingroups' id='admingroups' value='1' onclick=\"AjaxCB(this, 1)\" checked /> <label for='admingroups'>Only the Groups where I'm an Admin</label><br />
+									<small><span style='color: red;'>Important Note:</span> This free version of the plugin will import only the first 3 pages and the first 3 groups from your list.<br />You can import all the pages and groups with the Pro version of the plugin <a href='http://wiziva.com/stm/pro.php' target='_blank'>available here</a>.</small><br />
 								</td></tr>
 							</table>
 						</div>
@@ -1044,10 +845,6 @@ class STMPlugin {
 					$title = 'Edit Settings';
 					$content = "
 						<p>
-						In the first field on the Settings page you need to enter your license code for the plugin.<br />
-						The plugin will work without entering your license code, but it will be required when there is a new versions of the plugin and you want to update it.<br />
-						To get your license code you need to <a href='http://wiziva.com/login.html' target='_blank'>login to our members area</a>, then click the icon next to the plugin name and select \"License\". You will be redirected to a page where you will see the license code and the expiration date.</p>
-						<p>
 							<strong>Twitter Cards</strong> are used to format the updates you share on Twitter.<br />
 							Read more about the different twitter cards formats <a href='https://dev.twitter.com/cards/types' target='_blank'>here</a><br />
 							Please pick the format wisely, because once you have an approval from Twitter it is not easy to switch to another format.<br />
@@ -1091,6 +888,11 @@ class STMPlugin {
 					";
 				}
 				$dialbuttons = "'Close': function() { jQuery(this).dialog('close'); }";
+				$content .= "<br /><br />
+					You are using the free version of Social Time Master!<br />
+					To unlock lot more great features and get premium support, please get the Pro version of the plugin here:<br /><br />
+					<center><a href='http://wiziva.com/stm/pro.php' target='_blank'>Social Time Master Pro<br />[discounted offer]</a></center><br />
+				";
 			break;
 		}
 		$this->AjaxContent($content);
@@ -1119,7 +921,7 @@ class STMPlugin {
 		$_GET['ajaxop'] = 1;
 		switch ($_GET['a']) {
 			case 'markpostforop':
-				$marked = get_settings('stmpostmarked');
+				$marked = get_option('stmpostmarked');
 				if (!$marked) $marked = ';';
 				if ($_GET['stat']=='false') $marked = str_replace(";$_GET[id];", ';', $marked);
 				else $marked .= $_GET['id'].';';
@@ -1129,7 +931,7 @@ class STMPlugin {
 				update_option('stmzoomlevel', $_GET['z']);
 			break;
 			case 'postvariations':
-				$numvars = $wpdb->get_var("SELECT MAX(numvar) FROM {$wpdb->prefix}stm_variations WHERE (postid=$_GET[id]) AND (numvar<200)");
+				$numvars = $wpdb->get_var($wpdb->prepare("SELECT MAX(numvar) FROM {$wpdb->prefix}stm_variations WHERE (postid=%d) AND (numvar<200)", $_GET['id']));
 				$content = $this->SelVariation('varnum', 0, $numvars, " onchange=\"if (this.value==-1) document.getElementById('opt2').style.display='block'; else document.getElementById('opt2').style.display='none';\"", "<option value='-1'>[add new]</option>");
 				$this->AjaxContent($content);
 				$moreops .= "document.getElementById('opt2').style.display='none'; document.getElementById('varsbox').innerHTML = \"$content\";";
@@ -1137,27 +939,22 @@ class STMPlugin {
 			break;
 			case 'deltimeline':
 				$tlid = $_GET['id'];
-				$scheduleid = $wpdb->get_var("SELECT scheduleid FROM {$wpdb->prefix}stm_timeline WHERE id=$tlid;");
-				$wpdb->query("DELETE FROM {$wpdb->prefix}stm_timeline WHERE id=$tlid;");
-				$hasrec = $wpdb->get_var("SELECT id FROM {$wpdb->prefix}stm_timeline WHERE scheduleid=$scheduleid;");
-				if (!$hasrec) $wpdb->query("DELETE FROM {$wpdb->prefix}stm_schedule WHERE id=$scheduleid;");
-				$variatoinid = $wpdb->get_var("SELECT variatoinid FROM {$wpdb->prefix}stm_timeline WHERE (id=$tlid) AND (postid=0);");
-				if ($variatoinid) {
-					$hasrec = $wpdb->get_var("SELECT id FROM {$wpdb->prefix}stm_timeline WHERE variatoinid=$variatoinid;");
-					$hasrec2 = $wpdb->get_var("SELECT id FROM {$wpdb->prefix}stm_schedule WHERE variatoinid=$variatoinid;");
-					if (!$hasrec && !$hasrec2) $wpdb->query("DELETE FROM {$wpdb->prefix}stm_variations WHERE id=$variatoinid;");
+				$scheduleid = $wpdb->get_var($wpdb->prepare("SELECT scheduleid FROM {$wpdb->prefix}stm_timeline WHERE id=%d;", $tlid));
+				$variationid = $wpdb->get_var($wpdb->prepare("SELECT variationid FROM {$wpdb->prefix}stm_timeline WHERE id=%d;", $tlid));
+				$wpdb->query($wpdb->prepare("DELETE FROM {$wpdb->prefix}stm_timeline WHERE id=%d;", $tlid));
+				$hasrec = $wpdb->get_var($wpdb->prepare("SELECT id FROM {$wpdb->prefix}stm_timeline WHERE scheduleid=%d;", $scheduleid));
+				if (!$hasrec) $wpdb->query($wpdb->prepare("DELETE FROM {$wpdb->prefix}stm_schedule WHERE id=%d;", $scheduleid));
+				if ($variationid) {
+					$hasrec = $wpdb->get_var($wpdb->prepare("SELECT id FROM {$wpdb->prefix}stm_timeline WHERE variationid=%d;", $variationid));
+					$hasrec2 = $wpdb->get_var($wpdb->prepare("SELECT id FROM {$wpdb->prefix}stm_schedule WHERE variationid=%d;", $variationid));
+					if (!$hasrec && !$hasrec2) $wpdb->query($wpdb->prepare("DELETE FROM {$wpdb->prefix}stm_variations WHERE id=%d;", $variationid));
 				}
 				$moreops .= "RemoveDiv('timel_$tlid');TLNumPosts();";
 				die($moreops);
 			break;
-			case 'savetimeline':
-				$tlid = $_GET['id'];
-				$ptime = $_POST["ptime_$tlid"];
-				$wpdb->query("UPDATE {$wpdb->prefix}stm_timeline SET posttime=$ptime WHERE id=$tlid;");
-			break;
 			case 'refreshclicks':
 				$arr = array();
-				$data = $wpdb->get_results("SELECT p.id, p.bitly FROM {$wpdb->prefix}stm_postlog as p LEFT JOIN {$wpdb->prefix}stm_urls as u ON u.bitly=p.bitly WHERE p.id=$_GET[plid];");
+				$data = $wpdb->get_results($wpdb->prepare("SELECT p.id, p.bitly FROM {$wpdb->prefix}stm_postlog as p LEFT JOIN {$wpdb->prefix}stm_urls as u ON u.bitly=p.bitly WHERE p.id=%d;", $_GET['plid']));
 				if (!count($data)) {
 					$moreops .= "document.getElementById('clicks_$_GET[plid]').innerHTML='-'; RefreshNext();";
 					die($moreops);
@@ -1166,7 +963,7 @@ class STMPlugin {
 				if (isset($arr[$info['bitly']])) $clickshares = $arr[$info['bitly']];
 				else {
 					$clickcount = $this->BitLyClicks($info['bitly'], 1);
-					$shares = $wpdb->get_var("SELECT numshares FROM {$wpdb->prefix}stm_urls WHERE bitly='$info[bitly]'");
+					$shares = $wpdb->get_var($wpdb->prepare("SELECT numshares FROM {$wpdb->prefix}stm_urls WHERE bitly=%s", $info['bitly']));
 					if (!$shares) $shares = 0;
 					if ($clickcount || $shares) $clickshares = $clickcount.'/'.$shares;
 					else $clickshares = '-';
@@ -1223,11 +1020,11 @@ class STMPlugin {
 			break;
 			case 'loadtemplate':
 				$vars = '';
-				$numvars = $wpdb->get_var("SELECT numvars FROM {$wpdb->prefix}stm_templates WHERE id=$_GET[tmplid]");
+				$numvars = $wpdb->get_var($wpdb->prepare("SELECT numvars FROM {$wpdb->prefix}stm_templates WHERE id=%d", $_GET['tmplid']));
 				for ($i=0; $i<=$numvars; $i++) {
 					$title = '';
 					$content = '';
-					$stub = $wpdb->get_results("SELECT * FROM {$wpdb->prefix}stm_variations WHERE (postid=$_GET[postid]) AND (numvar=$i)");
+					$stub = $wpdb->get_results($wpdb->prepare("SELECT * FROM {$wpdb->prefix}stm_variations WHERE (postid=%d) AND (numvar=%d)", $_GET['postid'], $i));
 					if (count($stub)) $info = (array)$stub[0];
 					else $info = array('title'=>'', 'content'=>'', 'imgurl'=>'');
 					$img = $info['imgurl']?"<img src='$info[imgurl]' style='max-width: 140px; max-height: 140px;' />":'';
@@ -1266,7 +1063,7 @@ class STMPlugin {
 				if ($vars) $vars = "<div style='text-align: right;'><input type='button' class='button-primary' value='Add Variation' onclick=\"AddVariation();\" /></div><div id='variationsbox'>$vars</div><div style='text-align: right;'><input type='button' class='button-primary' value='Add Variation' onclick=\"AddVariation();\" /></div>";
 				$schedule = '';
 				$i = 1;
-				$data = $wpdb->get_results("SELECT * FROM {$wpdb->prefix}stm_schedule WHERE templid=$_GET[tmplid] ORDER BY numschedule");
+				$data = $wpdb->get_results($wpdb->prepare("SELECT * FROM {$wpdb->prefix}stm_schedule WHERE templid=%d ORDER BY numschedule", $_GET['tmplid']));
 				foreach ($data as $k=>$info) {
 					$info = (array)$info;
 					$ch = $info['repnum']?' checked':'';
@@ -1317,14 +1114,14 @@ class STMPlugin {
 	function DoAuth() {
 		global $wpdb;
 		$lurl = admin_url()."admin.php?page=stm&doauth=$_GET[doauth]";
-		$data = $wpdb->get_results("SELECT atype, auth1, auth2, info FROM {$wpdb->prefix}stm_accounts WHERE id=$_GET[doauth];");
+		$data = $wpdb->get_results($wpdb->prepare("SELECT atype, auth1, auth2, info FROM {$wpdb->prefix}stm_accounts WHERE id=%d;", $_GET['doauth']));
 		$info = (array)$data[0];
 		if ($info['atype'] == 'facebook') {
 			$lurl = urlencode($lurl);
 			$appid = $info['auth1'];
 			$appsecret = $info['auth2'];
 			if (isset($_REQUEST['code']) && isset($_REQUEST['state'])) {
-				$state = get_settings('stmstate');
+				$state = get_option('stmstate');
 				if ($state != $_REQUEST['state']) die("<META HTTP-EQUIV='Refresh' Content='0; URL=admin.php?page=stm-accounts'>");
 				$token_url = "https://graph.facebook.com/oauth/access_token?client_id=$appid&redirect_uri=$lurl&client_secret=$appsecret&code=$_REQUEST[code]";
 				$response = file_get_contents($token_url);
@@ -1333,10 +1130,11 @@ class STMPlugin {
 				$access_token = $params['access_token'];
 				$user = json_decode(file_get_contents("https://graph.facebook.com/me?access_token=$access_token"), true);
 				$fbid = $user['id'];
-				$wpdb->query("UPDATE {$wpdb->prefix}stm_accounts SET auth3='$fbid', auth4='$access_token' WHERE id=$_GET[doauth]");
+				$wpdb->query($wpdb->prepare("UPDATE {$wpdb->prefix}stm_accounts SET auth3=%s, auth4=%s WHERE id=%d", $fbid, $access_token, $_GET['doauth']));
 				if (strpos(' '.$info['info'], 'imppages')) {
 					$accounts = json_decode(file_get_contents("https://graph.facebook.com/$fbid/accounts?access_token=$access_token"), true);
 					$accounts = $accounts['data'];
+					$start = 3;
 					foreach ($accounts as $k=>$acc) {
 						$perms = $acc['perms'];
 						$cango = 0;
@@ -1345,9 +1143,11 @@ class STMPlugin {
 							break;
 						}
 						if (!$cango) continue;
-						$pgid = $wpdb->get_var("SELECT id FROM {$wpdb->prefix}stm_accounts WHERE (parentid='$_GET[doauth]') AND (username='$acc[name]') AND (info='page')");
-						if ($pgid) $wpdb->query("UPDATE {$wpdb->prefix}stm_accounts SET username='$acc[name]', auth3='$acc[id]', auth4='$acc[access_token]' WHERE id=$pgid;");
-						else $wpdb->query("INSERT INTO {$wpdb->prefix}stm_accounts (parentid, atype, username, auth3, auth4, info) VALUES ('$_GET[doauth]', 'facebook', '$acc[name]', '$acc[id]', '$acc[access_token]', 'page');");
+						$pgid = $wpdb->get_var($wpdb->prepare("SELECT id FROM {$wpdb->prefix}stm_accounts WHERE (parentid=%d) AND (username=%s) AND (info='page')", $_GET['doauth'], $acc['name']));
+						if ($pgid) $wpdb->query($wpdb->prepare("UPDATE {$wpdb->prefix}stm_accounts SET username=%s, auth3=%s, auth4=%s WHERE id=$pgid;", $acc['name'], $acc['id'], $acc['access_token']));
+						else $wpdb->query($wpdb->prepare("INSERT INTO {$wpdb->prefix}stm_accounts (parentid, atype, username, auth3, auth4, info) VALUES (%d, 'facebook', %s, %s, %s, 'page');", $_GET['doauth'], $acc['name'], $acc['id'], $acc['access_token']));
+						$start--;
+						if ($start <= 0) break;
 					}
 				}
 				if (strpos(' '.$info['info'], 'impgroups')) {
@@ -1355,11 +1155,14 @@ class STMPlugin {
 					if (strpos(' '.$info['info'], 'admingroups')) $amdinonly = 1;
 					$groups = json_decode(file_get_contents("https://graph.facebook.com/$fbid/groups?access_token=$access_token"), true);
 					$groups = $groups['data'];
+					$start = 3;
 					foreach ($groups as $k=>$gr) {
 						if ($amdinonly && ($gr['administrator'] != '1')) continue;
-						$grid = $wpdb->get_var("SELECT id FROM {$wpdb->prefix}stm_accounts WHERE (parentid='$_GET[doauth]') AND (username='$gr[name]') AND (info='group')");
-						if ($grid) $wpdb->query("UPDATE {$wpdb->prefix}stm_accounts SET username='$gr[name]', auth3='$gr[id]' WHERE id=$grid;");
-						else $wpdb->query("INSERT INTO {$wpdb->prefix}stm_accounts (parentid, atype, username, auth3, info) VALUES ('$_GET[doauth]', 'facebook', '$gr[name]', '$gr[id]', 'group');");
+						$grid = $wpdb->get_var($wpdb->prepare("SELECT id FROM {$wpdb->prefix}stm_accounts WHERE (parentid=%d) AND (username=%s) AND (info='group')", $_GET['doauth'], $gr['name']));
+						if ($grid) $wpdb->query($wpdb->prepare("UPDATE {$wpdb->prefix}stm_accounts SET username=%s, auth3=%s WHERE id=%d;", $gr['name'], $gr['id'], $grid));
+						else $wpdb->query($wpdb->prepare("INSERT INTO {$wpdb->prefix}stm_accounts (parentid, atype, username, auth3, info) VALUES (%s, 'facebook', %s, %s, 'group');", $_GET['doauth'], $gr['name'], $gr['id']));
+						$start--;
+						if ($start <= 0) break;
 					}
 				}
 				die("<META HTTP-EQUIV='Refresh' Content='0; URL=admin.php?page=stm-accounts'>");
@@ -1391,7 +1194,7 @@ class STMPlugin {
 				$response = $this->HTTPPost($url, $params);
 				parse_str($response, $params);
 				$info = serialize($params);
-				$wpdb->query("UPDATE {$wpdb->prefix}stm_accounts SET auth3='$params[oauth_token]', auth4='$params[oauth_token_secret]', info='$info' WHERE id=$_GET[doauth]");
+				$wpdb->query($wpdb->prepare("UPDATE {$wpdb->prefix}stm_accounts SET auth3=%s, auth4=%s, info=%s WHERE id=%d;", $params['oauth_token'], $params['oauth_token_secret'], $info, $_GET['doauth']));
 				die("<META HTTP-EQUIV='Refresh' Content='0; URL=admin.php?page=stm-accounts'>");
 			}
 			$nonce = time();
@@ -1413,13 +1216,13 @@ class STMPlugin {
 			$apikey = $info['auth1'];
 			$secretkey = $info['auth2'];
 			if (isset($_REQUEST['code']) && isset($_REQUEST['state'])) {
-				$state = get_settings('stmstate');
+				$state = get_option('stmstate');
 				if($state != $_REQUEST['state']) die("<META HTTP-EQUIV='Refresh' Content='0; URL=admin.php?page=stm-accounts'>");
 				$token_url = "https://www.linkedin.com/uas/oauth2/accessToken?grant_type=authorization_code&code=$_REQUEST[code]&redirect_uri=$lurl&client_id=$apikey&client_secret=$secretkey";
 				$response = file_get_contents($token_url);
 				$res = json_decode($response);
 				$token = $res->access_token;
-				$wpdb->query("UPDATE {$wpdb->prefix}stm_accounts SET auth3='$token' WHERE id=$_GET[doauth]");
+				$wpdb->query($wpdb->prepare("UPDATE {$wpdb->prefix}stm_accounts SET auth3=%s WHERE id=%d", $token, $_GET['doauth']));
 				die("<META HTTP-EQUIV='Refresh' Content='0; URL=admin.php?page=stm-accounts'>");
 			}
 			$state = md5(uniqid(rand(), true));
@@ -1432,14 +1235,14 @@ class STMPlugin {
 			$consumersecret = $info['auth2'];
 			if (isset($_GET['oauth_token']) && $_GET['oauth_verifier']) {
 				require_once(STM_DIR.'/tumblroauth/tumblroauth.php');
-				$oauth_token_secret = get_settings('stmstate');
+				$oauth_token_secret = get_option('stmstate');
 				$tum_oauth = new TumblrOAuth($consumerkey, $consumersecret, $_GET['oauth_token'], $oauth_token_secret);
 				$access_token = $tum_oauth->getAccessToken($_REQUEST['oauth_verifier']);
 				$tum_oauth = new TumblrOAuth($consumerkey, $consumersecret, $access_token['oauth_token'], $access_token['oauth_token_secret']);
 				$userinfo = $tum_oauth->get('http://api.tumblr.com/v2/user/info');
 				if (200 == $tum_oauth->http_code) $username = $userinfo->response->user->name;
 				else $username = '';
-				$wpdb->query("UPDATE {$wpdb->prefix}stm_accounts SET auth3='$access_token[oauth_token]', auth4='$access_token[oauth_token_secret]', info='$username' WHERE id=$_GET[doauth]");
+				$wpdb->query($wpdb->prepare("UPDATE {$wpdb->prefix}stm_accounts SET auth3=%s, auth4=%s, info=%s WHERE id=%d", $access_token['oauth_token'], $access_token['oauth_token_secret'], $username, $_GET['doauth']));
 				die("<META HTTP-EQUIV='Refresh' Content='0; URL=admin.php?page=stm-accounts'>");
 			}
 			$nonce = time();
@@ -1520,14 +1323,14 @@ class STMPlugin {
 			if ($numvar > $maxnumvar) $maxnumvar = $numvar;
 			$content = $_POST['content_'.$numvar];
 			$imgurl = $_POST['imgurl_'.$numvar];
-			$id = $wpdb->get_var("SELECT id FROM {$wpdb->prefix}stm_variations WHERE (postid=$postid) AND (numvar=$numvar)");
+			$id = $wpdb->get_var($wpdb->prepare("SELECT id FROM {$wpdb->prefix}stm_variations WHERE (postid=%d) AND (numvar=%d)", $postid, $numvar));
 			if (!$id) {
-				$wpdb->query("INSERT INTO {$wpdb->prefix}stm_variations (postid, numvar) VALUES ($postid, $numvar);");
+				$wpdb->query($wpdb->prepare("INSERT INTO {$wpdb->prefix}stm_variations (postid, numvar) VALUES (%d, %d);", $postid, $numvar));
 				$id = $wpdb->insert_id;
 			}
 			if (!$title) $title = get_the_title($postid);
 			if (!$content) {
-				$content = $wpdb->get_var("SELECT post_content FROM {$wpdb->prefix}posts WHERE ID=$postid");
+				$content = $wpdb->get_var($wpdb->prepare("SELECT post_content FROM {$wpdb->prefix}posts WHERE ID=%d", $postid));
 				$content = $this->LimitLength(strip_tags($content), 300);
 			}
 			if (!$content) $content = $title;
@@ -1540,13 +1343,13 @@ class STMPlugin {
 			$title = addslashes(stripslashes($title));
 			$content = addslashes(strip_tags(stripslashes($content)));
 			$imgurl = addslashes($imgurl);
-			$wpdb->query("UPDATE {$wpdb->prefix}stm_variations SET title='$title', content='$content', imgurl='$imgurl', url='$url' WHERE id=$id;");
+			$wpdb->query($wpdb->prepare("UPDATE {$wpdb->prefix}stm_variations SET title=%s, content=%s, imgurl=%s, url=%s WHERE id=%d;", $title, $content, $imgurl, $url, $id));
 		}
-		if ($maxnumvar) $wpdb->query("DELETE FROM {$wpdb->prefix}stm_variations WHERE (postid=$postid) AND (numvar>$maxnumvar);");
+		if ($maxnumvar) $wpdb->query($wpdb->prepare("DELETE FROM {$wpdb->prefix}stm_variations WHERE (postid=%d) AND (numvar>%d);", $postid, $maxnumvar));
 		if (!isset($_POST['spdoschedule'])) return '';
 		// save schedules
 		$maxschedule = 0;
-		$wpdb->query("UPDATE {$wpdb->prefix}stm_schedule SET fordel=1 WHERE postid=$postid;");
+		$wpdb->query($wpdb->prepare("UPDATE {$wpdb->prefix}stm_schedule SET fordel=1 WHERE postid=%d;", $postid));
 		foreach ($_POST as $k=>$intnum) if (substr($k, 0, 7) == 'intnum_') {
 			$numschedule = substr($k, 7);
 			if ($numschedule > $maxschedule) $maxschedule = $numschedule;
@@ -1568,15 +1371,15 @@ class STMPlugin {
 			}
 			$numvar = $_POST['numvar_'.$numschedule];
 			$accountid = $_POST['accountid_'.$numschedule];
-			$id = $wpdb->get_var("SELECT id FROM {$wpdb->prefix}stm_schedule WHERE (postid=$postid) AND (numschedule=$numschedule)");
+			$id = $wpdb->get_var($wpdb->prepare("SELECT id FROM {$wpdb->prefix}stm_schedule WHERE (postid=%d) AND (numschedule=%d)", $postid, $numschedule));
 			if (!$id) {
-				$wpdb->query("INSERT INTO {$wpdb->prefix}stm_schedule (postid, numschedule) VALUES ($postid, $numschedule);");
+				$wpdb->query($wpdb->prepare("INSERT INTO {$wpdb->prefix}stm_schedule (postid, numschedule) VALUES (%d, %d);", $postid, $numschedule));
 				$id = $wpdb->insert_id;
 			}
-			$wpdb->query("UPDATE {$wpdb->prefix}stm_schedule SET numvar='$numvar', intnum=$intnum, inttype='$inttype', intsec=$intsec, repnum=$repnum, repcount=$repcount, reptype='$reptype', repsec=$repsec, accountid=$accountid, fordel=0 WHERE id=$id;");
+			$wpdb->query($wpdb->prepare("UPDATE {$wpdb->prefix}stm_schedule SET numvar=%d, intnum=%d, inttype=%s, intsec=%d, repnum=%d, repcount=%d, reptype=%s, repsec=%d, accountid=%d, fordel=0 WHERE id=%d;", $numvar, $intnum, $inttype, $intsec, $repnum, $repcount, $reptype, $repsec, $accountid, $id));
 		}
 		$this->DelSchedules();
-		if ($maxschedule) $wpdb->query("DELETE FROM {$wpdb->prefix}stm_schedule WHERE (postid=$postid) AND (numschedule>$maxschedule);");
+		if ($maxschedule) $wpdb->query($wpdb->prepare("DELETE FROM {$wpdb->prefix}stm_schedule WHERE (postid=%d) AND (numschedule>%d);", $postid, $maxschedule));
 		$this->BuildTimeLine("postid=$postid");
 	}
 
@@ -1614,7 +1417,7 @@ class STMPlugin {
 		$stmstartfrom = get_post_meta($post_id, 'stmstartfrom', true);
 		if (!$stmstartfrom) $stmstartfrom = 1;
 		$disp = ($stmstartfrom==2)?'inline':'none';
-		$hasscheduled = $wpdb->get_var("SELECT COUNT(id) FROM {$wpdb->prefix}stm_schedule WHERE postid=$post_id;");
+		$hasscheduled = $wpdb->get_var($wpdb->prepare("SELECT COUNT(id) FROM {$wpdb->prefix}stm_schedule WHERE postid=%d;", $post_id));
 		if ($hasscheduled) {
 			$cb = "<input type='checkbox' name='spdoschedule' id='spdoschedule' value='1' onclick=\"if (this.checked) document.getElementById('stmeditbox').style.display='block'; else document.getElementById('stmeditbox').style.display='none';\" /> <label for='spdoschedule'><strong>Edit Scheduling</strong> (if you do this any manual changes in scheduled sharing for this post will be overwritten)</label><br /><br />";
 			$div1 = "<div id='stmeditbox' style='display: none;'>";
@@ -1690,7 +1493,7 @@ class STMPlugin {
 		//$this->Cron();
         if (isset($_POST['DoDelete']) && isset($_POST['godel'])) {
             foreach ($_POST['godel'] as $id) 
-				$wpdb->query("DELETE FROM {$wpdb->prefix}stm_postlog WHERE id=$id");
+				$wpdb->query($wpdb->prepare("DELETE FROM {$wpdb->prefix}stm_postlog WHERE id=%d", $id));
             die("<META HTTP-EQUIV='Refresh' Content='0; URL=admin.php?page=stm-postlog&msg=dels' />");
         }
 		$msg = '';
@@ -1705,7 +1508,6 @@ class STMPlugin {
 					<a href='admin.php?page=stm-scheduled&addpost=1'>Add Manually</a>
 					<a href='admin.php?page=stm-scheduled&addpost=2'>Bulk Add URLs</a>
 					<a href='admin.php?page=stm-scheduled&addpost=3'>Add from RSS</a>
-					<a href='admin.php?page=stm-scheduled&addpost=4'>Bulk Schedule Posts</a>
 				</div>
 				<div id='icon-edit-pages' class='icon32'></div>
 				<h2><img src='".STM_URL."images/logofull.png' align='absmiddle' class='logo' /> &nbsp; Post Log
@@ -1720,9 +1522,9 @@ class STMPlugin {
 				$msg
 		";
 		$qprop = $this->slPrepareQuerry('postlog', 'ptime', 'desc');
-		$bitlyactive = get_settings('stmbitly');
-		if ($bitlyactive) $data = $wpdb->get_results("SELECT l.*, u.clickcount, u.numshares FROM {$wpdb->prefix}stm_postlog as l LEFT JOIN {$wpdb->prefix}stm_urls as u ON l.bitly=u.bitly WHERE 1 GROUP BY l.id ORDER BY $qprop[order] $qprop[dir] LIMIT $qprop[start], $qprop[limit];");
-		else $data = $wpdb->get_results("SELECT * FROM {$wpdb->prefix}stm_postlog WHERE 1 ORDER BY $qprop[order] $qprop[dir] LIMIT $qprop[start], $qprop[limit];");
+		$bitlyactive = get_option('stmbitly');
+		if ($bitlyactive) $data = $wpdb->get_results($wpdb->prepare("SELECT l.*, u.clickcount, u.numshares FROM {$wpdb->prefix}stm_postlog as l LEFT JOIN {$wpdb->prefix}stm_urls as u ON l.bitly=u.bitly WHERE 1 GROUP BY l.id ORDER BY %s %s LIMIT %d, %d;", $qprop['order'], $qprop['dir'], $qprop['start'], $qprop['limit']));
+		else $data = $wpdb->get_results($wpdb->prepare("SELECT * FROM {$wpdb->prefix}stm_postlog WHERE 1 ORDER BY %s %s LIMIT %d, %d;", $qprop['order'], $qprop['dir'], $qprop['start'], $qprop['limit']));
 		if (!count($data)) {
 			echo $html."There are no social shares made yet!</div>".$this->Footer();
 			return '';
@@ -1753,6 +1555,7 @@ class STMPlugin {
 		foreach ($data as $k=>$info) {
 			$info = (array)$info;
 			$lnk = '';
+			if (!$info['userid'] && $info['aname']) $info['userid'] = $info['aname'];
 			if ($info['atype'] == 'twitter') $lnk = "https://twitter.com/$info[userid]";
 			if (in_array($info['atype'], array('fbpage', 'fbgroup', 'fbacc'))) $lnk = "https://www.facebook.com/$info[userid]/";
 			if ($info['atype'] == 'linkedin') $lnk = "https://www.linkedin.com/profile/view?id=$info[userid]";
@@ -1779,9 +1582,9 @@ class STMPlugin {
 					$bitlystats = " <a href='$info[bitly]+' target='_blank'><img src='".STM_URL."images/find.png' align='absmiddle' class='icon' /></a>";
 					if (isset($arrb[$info['bitly']])) $clickshares = $arrb[$info['bitly']];
 					else {
-						$clickcount = $wpdb->get_var("SELECT clickcount FROM {$wpdb->prefix}stm_urls WHERE bitly='$info[bitly]'");
+						$clickcount = $wpdb->get_var($wpdb->prepare("SELECT clickcount FROM {$wpdb->prefix}stm_urls WHERE bitly=%s;", $info['bitly']));
 						$clicks += $clickcount;
-						$shares = $wpdb->get_var("SELECT numshares FROM {$wpdb->prefix}stm_urls WHERE bitly='$info[bitly]'");
+						$shares = $wpdb->get_var($wpdb->prepare("SELECT numshares FROM {$wpdb->prefix}stm_urls WHERE bitly=%s;", $info['bitly']));
 						if ($clickcount || $shares) $clickshares = $clickcount.'/'.$shares;
 						else $clickshares = '-';
 						$arrb[$info['bitly']] = $clickshares;
@@ -1791,13 +1594,13 @@ class STMPlugin {
 			}
 			if (!$info['bitly']) $info['bitly'] = $info['url'];
 			$info['ptime'] = $this->UserTime($info['ptime']);
-			$info['ptime'] = date(get_settings('date_format'), $info['ptime']).', '.date(get_settings('time_format'), $info['ptime']);
+			$info['ptime'] = date(get_option('date_format'), $info['ptime']).', '.date(get_option('time_format'), $info['ptime']);
 			if ($info['postid']) {
-				$title = $wpdb->get_var("SELECT post_title FROM {$wpdb->prefix}posts WHERE id=$info[postid];");
+				$title = $wpdb->get_var($wpdb->prepare("SELECT post_title FROM {$wpdb->prefix}posts WHERE id=%d;", $info['postid']));
 				if ($info['numvar'] == 0) $info['numvar'] = 'O';
 			}
 			else {
-				$title = $wpdb->get_var("SELECT title FROM {$wpdb->prefix}stm_variations WHERE id=$info[variationid];");
+				$title = $wpdb->get_var($wpdb->prepare("SELECT title FROM {$wpdb->prefix}stm_variations WHERE id=%d;", $info['variationid']));
 				$info['numvar'] = '-';
 			}
 			$html .= "
@@ -1838,7 +1641,7 @@ class STMPlugin {
 
 	function PostLog($postid) {
 		global $wpdb;
-		$data = $wpdb->get_results("SELECT * FROM {$wpdb->prefix}stm_postlog WHERE postid=$postid ORDER BY ptime DESC;");
+		$data = $wpdb->get_results($wpdb->prepare("SELECT * FROM {$wpdb->prefix}stm_postlog WHERE postid=%d ORDER BY ptime DESC;", $postid));
 		if (!count($data)) return "There are no social shares made yet for this post!";
 		$html = "
 			<table class='wp-list-table widefat fixed pages' cellspacing='0' style='width: 100%; margin: 10px 0 7px 0;'>
@@ -1867,9 +1670,9 @@ class STMPlugin {
 				$bitlystats = " <a href='$info[bitly]+' target='_blank'><img src='".STM_URL."images/find.png' align='absmiddle' class='icon' /></a>";
 				if (isset($arrb[$info['bitly']])) $clickshares = $arrb[$info['bitly']];
 				else {
-					$clickcount = $wpdb->get_var("SELECT clickcount FROM {$wpdb->prefix}stm_urls WHERE bitly='$info[bitly]'");
+					$clickcount = $wpdb->get_var($wpdb->prepare("SELECT clickcount FROM {$wpdb->prefix}stm_urls WHERE bitly=%s;", $info['bitly']));
 					$clicks += $clickcount;
-					$shares = $wpdb->get_var("SELECT numshares FROM {$wpdb->prefix}stm_urls WHERE bitly='$info[bitly]'");
+					$shares = $wpdb->get_var($wpdb->prepare("SELECT numshares FROM {$wpdb->prefix}stm_urls WHERE bitly=%s;", $info['bitly']));
 					if ($clickcount || $shares) $clickshares = $clickcount.'/'.$shares;
 					else $clickshares = '-';
 					$arrb[$info['bitly']] = $clickshares;
@@ -1878,7 +1681,7 @@ class STMPlugin {
 			else $clickshares = 'n/a';
 			if (!$info['bitly']) $info['bitly'] = $info['url'];
 			$info['ptime'] = $this->UserTime($info['ptime']);
-			$info['ptime'] = date(get_settings('date_format'), $info['ptime']).', '.date(get_settings('time_format'), $info['ptime']);
+			$info['ptime'] = date(get_option('date_format'), $info['ptime']).', '.date(get_option('time_format'), $info['ptime']);
 			if ($info['numvar'] == 0) $info['numvar'] = 'O';
 			$html .= "
 				<tr>
@@ -1906,7 +1709,7 @@ class STMPlugin {
 		global $wpdb;
 		if (!$postid) return '';
 		$i = 0;
-		$stub = $wpdb->get_results("SELECT * FROM {$wpdb->prefix}stm_variations WHERE (postid=$postid) AND (numvar=0)");
+		$stub = $wpdb->get_results($wpdb->prepare("SELECT * FROM {$wpdb->prefix}stm_variations WHERE (postid=%d) AND (numvar=0)", $postid));
 		if (count($stub)) $info = (array)$stub[0];
 		else $info = array('title'=>'', 'content'=>'', 'imgurl'=>'');
 		foreach ($info as $k=>$v) $info[$k] = stripslashes(stripslashes($v));
@@ -1926,7 +1729,7 @@ class STMPlugin {
 			</div>
 		";	
 		$i++;
-		$data = $wpdb->get_results("SELECT * FROM {$wpdb->prefix}stm_variations WHERE (postid=$postid) AND (numvar>0) ORDER BY numvar");
+		$data = $wpdb->get_results($wpdb->prepare("SELECT * FROM {$wpdb->prefix}stm_variations WHERE (postid=%d) AND (numvar>0) ORDER BY numvar", $postid));
 		foreach ($data as $k=>$info) {
 			$info = (array)$info;
 			$img = $info['imgurl']?"<img src='$info[imgurl]' style='max-width: 140px; max-height: 140px;' />":'';
@@ -1954,8 +1757,8 @@ class STMPlugin {
 		if (!$postid) return '';
 		$i = 1;
 		$html = '';
-		$numvars = $wpdb->get_var("SELECT MAX(numvar) FROM {$wpdb->prefix}stm_variations WHERE (postid=$postid) AND (numvar<200)");
-		$data = $wpdb->get_results("SELECT * FROM {$wpdb->prefix}stm_schedule WHERE postid=$postid ORDER BY intsec");
+		$numvars = $wpdb->get_var($wpdb->prepare("SELECT MAX(numvar) FROM {$wpdb->prefix}stm_variations WHERE (postid=%d) AND (numvar<200)", $postid));
+		$data = $wpdb->get_results($wpdb->prepare("SELECT * FROM {$wpdb->prefix}stm_schedule WHERE postid=%d ORDER BY intsec", $postid));
 		foreach ($data as $k=>$info) {
 			$info = (array)$info;
 			$ch = $info['repnum']?' checked':'';
@@ -1994,8 +1797,8 @@ class STMPlugin {
 
 	function DelSchedule($id) {
 		global $wpdb;
-		$wpdb->query("DELETE FROM {$wpdb->prefix}stm_timeline WHERE scheduleid=$id");
-		$wpdb->query("DELETE FROM {$wpdb->prefix}stm_schedule WHERE id='$id'");
+		$wpdb->query($wpdb->prepare("DELETE FROM {$wpdb->prefix}stm_timeline WHERE scheduleid=%d;", $id));
+		$wpdb->query($wpdb->prepare("DELETE FROM {$wpdb->prefix}stm_schedule WHERE id=%d;", $id));
 	}
 
 	function UpdateProc() {
@@ -2003,84 +1806,12 @@ class STMPlugin {
 		//for example - DB updates
 	}
 
-	function AutoUpdate() {
-		update_option('stmhasnewver', 0);
-		if (isset($_GET['done'])) {
-			$html = "
-				<div class='wrap'>
-					<div id='icon-edit-pages' class='icon32'></div>
-					<h2><img src='".STM_URL."images/logofull.png' align='absmiddle' class='logo' /> &nbsp; Version Update</h2><br />
-					<div class='clear'></div>
-					<strong>The plugin was updated successfully to version ".STM_PLUGIN_VERSION."!</strong>
-				</div>
-			";
-			echo $html; return ;
-		}
-		if (isset($_GET['updateproc'])) {
-			$this->UpdateProc();
-			die("<META HTTP-EQUIV='Refresh' Content='0; URL=admin.php?page=stm&autoupdate=1&done=1'>");
-		}
-		if (isset($_POST['doupdate'])) {
-			//1 - check for license
-			$liccode = urlencode(get_settings('stmliccode'));
-			$lastver = file_get_contents("http://wiziva.com/?lastver=".STM_WIZIVA_ID."&f=1&lcode=$liccode");
-			$licexpires = $this->GetBetweenTags($lastver, '<licexpires>', '</licexpires>');
-			if (!$licexpires) die('Your license expired and you can not update the plugin!');
-			elseif ($licexpires < time()) die("Your don't have a license registered and you can not update the plugin!");
-			//2 - download and extract the zip file
-			chdir(STM_DIR);
-			chdir('..');
-			$content = file_get_contents("http://wiziva.com/?downplug=".STM_WIZIVA_ID."&ver=$_POST[version]&lcode=$liccode");
-			if (strlen($content) < 100) die("Failed to download the plugin file!");
-			$fh = fopen('upd.zip', 'wb');
-			fwrite($fh, $content);
-			fclose($fh);
-			if (!$this->unzip('upd.zip')) die('Can not unzip the plugin file!');
-			@unlink('upd.zip');
-			//3 - redirect to update proc (after the files are replaced with the new ones)
-			die("<META HTTP-EQUIV='Refresh' Content='0; URL=admin.php?page=stm&autoupdate=1&updateproc=1'>");
-		}
-		$liccode = urlencode(get_settings('stmliccode'));
-		$lastver = file_get_contents("http://wiziva.com/?lastver=".STM_WIZIVA_ID."&f=1&lcode=$liccode");
-		$ver = $this->GetBetweenTags($lastver, '<ver>', '</ver>');
-		$news = $this->GetBetweenTags($lastver, '<news>', '</news>');
-		$reldate = date('d.m.Y', $this->GetBetweenTags($lastver, '<reldate>', '</reldate>'));
-		$license = $this->GetBetweenTags($lastver, '<license>', '</license>');
-		$licexpires = $this->GetBetweenTags($lastver, '<licexpires>', '</licexpires>');
-		if ($licexpires) $exp = " (expires: ".date('d.m.Y', $licexpires).")";
-		else $exp = '';
-		$curver = str_replace('.', '', STM_PLUGIN_VERSION);
-		$curver = $curver . str_repeat('0', 4-strlen($curver));
-		$lver = str_replace('.', '', $ver);
-		$lver = $lver . str_repeat('0', 4-strlen($lver));
-		if ($curver < $lver) {
-			if (!$licexpires) $but = "<br />Your don't have a license registered and you can not update the plugin!<br />";
-			elseif ($licexpires < time()) $but = "<br />Your license expired and you can not update the plugin!<br />";
-			else $but = "<br /><form method='post'><input type='hidden' name='version' value='$ver' /><input type='submit' name='doupdate' value='Update to Version $ver' /></form><br />";
-		}
-		else $but = '';
-		$html = "
-			<div class='wrap'>
-				<div id='icon-edit-pages' class='icon32'></div>
-				<h2><img src='".STM_URL."images/logofull.png' align='absmiddle' class='logo' /> &nbsp; Version Update</h2><br />
-				<div class='clear'></div>
-				The version you're using: <strong>".STM_PLUGIN_VERSION."</strong><br />
-				The latest available stable version: <strong>$ver</strong> (released: $reldate)<br />
-				Your License: <strong>$license</strong>$exp<br />$but<br />
-				<h3>What's new in version $ver</h3>
-				$news
-			</div>
-		";
-		echo $html;
-	}
-
 	function Timeline() {
 		if (isset($_GET['doauth'])) return $this->DoAuth();
-		if (isset($_GET['autoupdate'])) return $this->AutoUpdate();
 		global $wpdb;
 		$tldate = isset($_GET['tldate'])?$_GET['tldate']:date('d.m.Y', $this->UserTime());
 		$numdays = isset($_GET['numdays'])?$_GET['numdays']:1;
-		if ($numdays > 50) $numdays = 50;
+		if ($numdays > 3) $numdays = 3;
 		$accountid = isset($_GET['accountid'])?$_GET['accountid']:$wpdb->get_var("SELECT id FROM {$wpdb->prefix}stm_accounts WHERE 1;");
 		$tldatei = strtotime($tldate);
 		$lineheight = 1440*$numdays.'px';
@@ -2094,10 +1825,9 @@ class STMPlugin {
 					<a href='admin.php?page=stm-scheduled&addpost=1'>Add Manually</a>
 					<a href='admin.php?page=stm-scheduled&addpost=2'>Bulk Add URLs</a>
 					<a href='admin.php?page=stm-scheduled&addpost=3'>Add from RSS</a>
-					<a href='admin.php?page=stm-scheduled&addpost=4'>Bulk Schedule Posts</a>
 				</div>
 				<div id='expanddiv' style='display: none; text-align: right; margin-bottom: 3px;'>
-					<span id='savelnk' style='display: none;'><a href='#' onclick=\"AjaxSubmitSP('frmtimline', 'savetimelineall');\">&nbsp;&nbsp;Save Changes&nbsp;&nbsp;</a> &nbsp;&nbsp;&nbsp;&nbsp;</span>
+					<span id='savelnk' style='display: none;'><a href='#' onclick=\"AjaxPopSP('savetimelineall');\">&nbsp;&nbsp;Save Changes&nbsp;&nbsp;</a> &nbsp;&nbsp;&nbsp;&nbsp;</span>
 					<img src='".STM_URL."images/leftd.png' id='prevday' title='Scroll to Previous Day' class='iconlink' align='absmiddle' onclick=\"NavDay('-1');\" />&nbsp;
 					<img src='".STM_URL."images/right.png' id='nextday' title='Scroll to Next Day' class='iconlink' align='absmiddle' onclick=\"NavDay('+1');\" />&nbsp;&nbsp;&nbsp;&nbsp;
 					<img src='".STM_URL."images/zoom_out.png' id='zoimage2' title='Zoom Out' class='iconlink' align='absmiddle' onclick=\"TimelineZoomOut();\" />&nbsp;
@@ -2124,9 +1854,9 @@ class STMPlugin {
 							<input type='hidden' name='page' value='stm' /> 
 							Account: ".$this->SelAccount('accountid', $accountid)." &nbsp; <img src='".STM_URL."images/clock_run.png' title='Set Prefered Posting Time' class='iconlink' align='absmiddle' onclick=\"AjaxPopSP('setpreftime&accountid=$accountid&numdays=$numdays&zoom='+tlzoom);\" />&nbsp;&nbsp;&nbsp;
 							Start Date: <input type='text' name='tldate' id='tldate' value='$tldate' style='width: 100px; position: relative; z-index: 100000;' /> &nbsp;&nbsp; 
-							Days: ".$this->SelNum('numdays', $numdays, 1, 50)."&nbsp;&nbsp;
+							Days: ".$this->SelNum('numdays', $numdays, 1, 3)."&nbsp;&nbsp;
 							<input class='button-primary' type='submit' name='doshow' value='Show' />&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;
-							<span id='savebutbox' style='display: none;'><input type='button' class='button-primary' value='Save Changes' onclick=\"AjaxSubmitSP('frmtimline', 'savetimelineall');\" style='background: #f01e1e; border-color: #f9a4a4; color: #FFF; box-shadow: inset 0 1px 0 rgba(120,200,230,.5),0 1px 0 rgba(0,0,0,.15);' /></span>
+							<span id='savebutbox' style='display: none;'><input type='button' class='button-primary' value='Save Changes' onclick=\"AjaxPopSP('savetimelineall');\" style='background: #f01e1e; border-color: #f9a4a4; color: #FFF; box-shadow: inset 0 1px 0 rgba(120,200,230,.5),0 1px 0 rgba(0,0,0,.15);' /></span>
 						</form>
 					</div>
 		";
@@ -2135,7 +1865,7 @@ class STMPlugin {
 			echo $html .= "<br /><br />Please select account (or <a href='admin.php?page=stm-accounts'>add one</a>) and date!";
 			return '';
 		}
-		$data = $wpdb->get_results("SELECT t.*, v.title, v.content, v.postid, v.url FROM {$wpdb->prefix}stm_timeline as t LEFT JOIN {$wpdb->prefix}stm_variations as v ON t.variationid=v.id WHERE (posttime>=$starttm) AND (posttime<=$endtm) AND (accountid=$accountid)");
+		$data = $wpdb->get_results($wpdb->prepare("SELECT t.*, v.title, v.content, v.postid, v.url FROM {$wpdb->prefix}stm_timeline as t LEFT JOIN {$wpdb->prefix}stm_variations as v ON t.variationid=v.id WHERE (posttime>=%d) AND (posttime<=%d) AND (accountid=%d)", $starttm, $endtm, $accountid));
 		$numposts = count($data);
 		foreach ($data as $k=>$info) {
 			$info = (array)$info;
@@ -2150,8 +1880,7 @@ class STMPlugin {
 			if (!$info['title']) $info['title'] = $info['content'];
 			$info['title'] = $this->LimitLength($info['title'], 100);
 			$posts .= "
-				<div class='item' style='top: $tpx;' onmousedown=\"ddInit(event, this);\" id='timel_$info[id]' onmouseup=\"AjaxActionSP('savetimeline&id=$info[id]', 'ptime_$info[id]');\">
-					<input type='hidden' name='ptime_$info[id]' id='ptime_$info[id]' value='$info[posttime]' />
+				<div class='item' style='top: $tpx;' onmousedown=\"ddInit(event, this);\" id='timel_$info[id]'>
 					<div class='tm' id='ptimeshow_$info[id]'>$ptime<span></span></div>
 					<div class='move' title='drag to move the post on the timeline'></div>
 					<div class='meta'>
@@ -2164,7 +1893,7 @@ class STMPlugin {
 				</div>
 			";
 		}
-		$ainfo = $wpdb->get_results("SELECT prefstart, prefend FROM {$wpdb->prefix}stm_accounts WHERE id=$accountid;");
+		$ainfo = $wpdb->get_results($wpdb->prepare("SELECT prefstart, prefend FROM {$wpdb->prefix}stm_accounts WHERE id=%d;", $accountid));
 		$ainfo = $ainfo[0];
 		$prefstart = $ainfo->prefstart;
 		$prefend = $ainfo->prefend;
@@ -2202,15 +1931,15 @@ class STMPlugin {
 				$days .= "<span class='hourtickm' id='htick_$i-$j-m' style='top: $tm;'></span>";
 			}
 			$preft .= 'px';
-			$prefs .= "<div class='lineprefered' id='pref_$i' onmouseover='ShowLinetime(event, 1);' onmouseout='ShowLinetime(event, 0);' onmousemove='LinetimePos(event);' ondblclick=\"AddToTimeline();\" style='top: $preft; height: $prefh;'></div>";
+			$prefs .= "<div class='lineprefered' id='pref_$i' onmouseover='ShowLinetime(event, 1);' onmouseout='ShowLinetime(event, 0);' onmousemove='LinetimePos(event);' ondblclick=\"AjaxPopSP('addtotimeline');\" style='top: $preft; height: $prefh;'></div>";
 		}
 		$tmoffs = $this->UserOffset();
-		$dozoom = get_settings('stmzoomlevel');
+		$dozoom = get_option('stmzoomlevel');
 		$dozoom = (($dozoom>0) && ($dozoom<11) && ($dozoom!=5))?"TimelineZoomTo($dozoom);":'';
-		$tlheight = get_settings('tlheight');
+		$tlheight = get_option('tlheight');
 		if (!$tlheight) $tlheight = 0;
 		$tlh = $tlheight?" style='height:$tlheight"."px;'":'';
-		$noanim = get_settings('stmnoanim');
+		$noanim = get_option('stmnoanim');
 		if (!$noanim) $noanim = 0;
 		$html .= "
 				<div style='float: right;'>
@@ -2232,7 +1961,7 @@ class STMPlugin {
 				<input type='hidden' id='stmurl' value='".STM_URL."' />
 				<div id='timelinebox' onscroll=\"TLBScroll();\"$tlh>
 					<div id='timeline' style='height: $lineheight;'>
-						<div class='line' id='line' style='height: $lineheight;' onmouseover='ShowLinetime(event, 1);' onmouseout='ShowLinetime(event, 0);' onmousemove='LinetimePos(event);' ondblclick=\"AddToTimeline();\"></div>
+						<div class='line' id='line' style='height: $lineheight;' onmouseover='ShowLinetime(event, 1);' onmouseout='ShowLinetime(event, 0);' onmousemove='LinetimePos(event);' ondblclick=\"AjaxPopSP('addtotimeline');\"></div>
 						$days
 						<div id='prefsbox'>$prefs</div>
 						$posts
@@ -2285,7 +2014,6 @@ class STMPlugin {
 					<a href='admin.php?page=stm-scheduled&addpost=1'>Add Manually</a>
 					<a href='admin.php?page=stm-scheduled&addpost=2'>Bulk Add URLs</a>
 					<a href='admin.php?page=stm-scheduled&addpost=3'>Add from RSS</a>
-					<a href='admin.php?page=stm-scheduled&addpost=4'>Bulk Schedule Posts</a>
 				</div>
 				<div id='icon-edit-pages' class='icon32'></div>
 				<h2><img src='".STM_URL."images/logofull.png' align='absmiddle' class='logo' /> &nbsp; Scheduled Posts 
@@ -2300,7 +2028,7 @@ class STMPlugin {
 				<div id='resmsg'></div>
 		";
 		$qprop = $this->slPrepareQuerry('schedule', 'nextposttime', 'asc');
-		$data = $wpdb->get_results("SELECT s.*, post_title FROM {$wpdb->prefix}stm_schedule as s LEFT JOIN {$wpdb->prefix}posts as p ON p.id=s.postid WHERE (postid>0) OR (variationid>0) ORDER BY $qprop[order] $qprop[dir] LIMIT $qprop[start], $qprop[limit];");
+		$data = $wpdb->get_results($wpdb->prepare("SELECT s.*, post_title FROM {$wpdb->prefix}stm_schedule as s LEFT JOIN {$wpdb->prefix}posts as p ON p.id=s.postid WHERE (postid>0) OR (variationid>0) ORDER BY %s %s LIMIT %d, %d;", $qprop['order'], $qprop['dir'], $qprop['start'], $qprop['limit']));
 		if (!count($data)) {
 			echo $html."There are no postings scheduled yet!<br />You can start by <a href='admin.php?page=stm-templates&sub=template'>creating a schedule template</a>, and then use it when you edit the blog posts.<br />You can also use the button \"Schedule More\" above.</div>".$this->Footer();
 			return '';
@@ -2344,24 +2072,24 @@ class STMPlugin {
 				if ($info['numvar'] == 0) $subt = '';
 				if ($info['numvar'] == 200) $info['numvar'] = $info['rotatenum'];
 				if ($info['numvar'] == 201) {
-					$maxnumvars = $wpdb->get_var("SELECT MAX(numvar) FROM {$wpdb->prefix}stm_variations WHERE (postid=$info[postid]) AND (numvar<200);");
+					$maxnumvars = $wpdb->get_var($wpdb->prepare("SELECT MAX(numvar) FROM {$wpdb->prefix}stm_variations WHERE (postid=%d) AND (numvar<200);", $info['postid']));
 					$info['numvar'] = rand(0, $maxnumvars);
 				}
-				$subt = $wpdb->get_var("SELECT title FROM {$wpdb->prefix}stm_variations WHERE (postid=$info[postid]) AND (numvar=$info[numvar])");
+				$subt = $wpdb->get_var($wpdb->prepare("SELECT title FROM {$wpdb->prefix}stm_variations WHERE (postid=%d) AND (numvar=%d)", $info['postid'], $info['numvar']));
 				if ($subt) $subt = ' - '.$subt;
 				if ($info['numvar'] == 0) $info['numvar'] = 'O';
 			}
 			else {
 				$info['numvar'] = '-';
-				$info['post_title'] = $wpdb->get_var("SELECT title FROM {$wpdb->prefix}stm_variations WHERE id=$info[variationid]");
+				$info['post_title'] = $wpdb->get_var($wpdb->prepare("SELECT title FROM {$wpdb->prefix}stm_variations WHERE id=%d", $info['variationid']));
 				$subt = '';
 			}
-			$stub = $wpdb->get_results("SELECT atype, username FROM {$wpdb->prefix}stm_accounts WHERE id=$info[accountid];");
+			$stub = $wpdb->get_results($wpdb->prepare("SELECT atype, username FROM {$wpdb->prefix}stm_accounts WHERE id=%d;", $info['accountid']));
 			if (!count($stub)) continue;
 			$ainfo = (array)$stub[0];
 			$acc = ucfirst($ainfo['atype']).' - '.$ainfo['username'];
 			$info['nextposttime'] = $info['nextposttime']+$this->UserOffset();
-			$info['nextposttime'] = date(get_settings('date_format'), $info['nextposttime']).', '.date(get_settings('time_format'), $info['nextposttime']);
+			$info['nextposttime'] = date(get_option('date_format'), $info['nextposttime']).', '.date(get_option('time_format'), $info['nextposttime']);
 			$rep = $info['repcount']?$info['repdone'].'/'.$info['repcount']:'-';
 			$edlnk = $info['postid']?"post.php?post=$info[postid]&action=edit":"admin.php?page=stm-scheduled&addpost=1&varid=$info[variationid]";
 			$repfreq = '-';
@@ -2410,7 +2138,7 @@ class STMPlugin {
 		$data = $wpdb->get_results("SELECT * FROM {$wpdb->prefix}stm_schedule WHERE $q;");
 		foreach ($data as $k=>$info) {
 			$info = (array)$info;
-			$wpdb->query("DELETE FROM {$wpdb->prefix}stm_timeline WHERE scheduleid=$info[id];");
+			$wpdb->query($wpdb->prepare("DELETE FROM {$wpdb->prefix}stm_timeline WHERE scheduleid=%d;", $info['id']));
 			if ($info['reptype'] == 'm') $repmult = 60;
 			if ($info['reptype'] == 'h') $repmult = 3600;
 			if ($info['reptype'] == 'd') $repmult = 24*3600;
@@ -2420,13 +2148,13 @@ class STMPlugin {
 			if ($info['postid']) $starttime = get_post_meta($info['postid'], 'stmstarttime', true);
 			elseif ($info['variationid']) {
 				$variationid = $info['variationid'];
-				$starttime = $wpdb->get_var("SELECT starttm FROM {$wpdb->prefix}stm_variations WHERE id=$variationid;");
+				$starttime = $wpdb->get_var($wpdb->prepare("SELECT starttm FROM {$wpdb->prefix}stm_variations WHERE id=%d;", $variationid));
 			}
 			else continue;
 			while (1) {
 				if ($info['postid']) {
 					if ($info['numvar'] > 199) {
-						$numvars = $wpdb->get_var("SELECT MAX(numvar) FROM {$wpdb->prefix}stm_variations WHERE (postid=$info[postid]) AND (numvar<200)");
+						$numvars = $wpdb->get_var($wpdb->prepare("SELECT MAX(numvar) FROM {$wpdb->prefix}stm_variations WHERE (postid=%d) AND (numvar<200);", $info['postid']));
 						if ($info['numvar'] == 200) { //rotate
 							$rotatenum++;
 							if ($rotatenum > $numvars) $rotatenum = 0;
@@ -2436,7 +2164,7 @@ class STMPlugin {
 						}
 					}
 					else $rotatenum = $info['numvar'];
-					$variationid = $wpdb->get_var("SELECT id FROM {$wpdb->prefix}stm_variations WHERE (postid=$info[postid]) AND (numvar=$rotatenum);");
+					$variationid = $wpdb->get_var($wpdb->prepare("SELECT id FROM {$wpdb->prefix}stm_variations WHERE (postid=%d) AND (numvar=%d);", $info['postid'], $rotatenum));
 					if (!$variationid) $variationid = 0;
 				}
 				if ($counter == 0) { // the rist post
@@ -2451,13 +2179,13 @@ class STMPlugin {
 					$posttime += $info['repnum']*$repmult;
 					$repcount--;
 				}
-				$wpdb->query("INSERT INTO {$wpdb->prefix}stm_timeline (scheduleid, variationid, posttime, accountid) VALUES ($info[id], $variationid, $posttime, $info[accountid]);");
+				$wpdb->query($wpdb->prepare("INSERT INTO {$wpdb->prefix}stm_timeline (scheduleid, variationid, posttime, accountid) VALUES (%d, %d, %d, %d);", $info['id'], $variationid, $posttime, $info['accountid']));
 				$counter++;
 				if (!$repcount) break;
 			}
 			$numposts += $counter;
-			$nextposttime = $wpdb->get_var("SELECT posttime FROM {$wpdb->prefix}stm_timeline WHERE scheduleid=$info[id] ORDER BY posttime ASC LIMIT 0,1");
-			$wpdb->query("UPDATE {$wpdb->prefix}stm_schedule SET nextposttime=$nextposttime WHERE id=$info[id];");
+			$nextposttime = $wpdb->get_var($wpdb->prepare("SELECT posttime FROM {$wpdb->prefix}stm_timeline WHERE scheduleid=%d ORDER BY posttime ASC LIMIT 0,1;", $info['id']));
+			$wpdb->query($wpdb->prepare("UPDATE {$wpdb->prefix}stm_schedule SET nextposttime=%d WHERE id=%d;", $nextposttime, $info['id']));
 		}
 		return $numposts;
 	}
@@ -2529,19 +2257,19 @@ class STMPlugin {
 				if (!$metas = $this->ExtractURLMetas($url)) continue;
 				$title = addslashes($metas['title']);
 				$content = addslashes($metas['content']);
-				$wpdb->query("INSERT INTO {$wpdb->prefix}stm_variations (title, content, url, imgurl, starttm) VALUES ('$title', '$content', '$url', '$metas[imgurl]', $nexttm);");
+				$wpdb->query($wpdb->prepare("INSERT INTO {$wpdb->prefix}stm_variations (title, content, url, imgurl, starttm) VALUES (%s, %s, %s, %s, %d);", $title, $content, $url, $metas['imgurl'], $nexttm));
 				$variationid = $wpdb->insert_id;
 				if ($_POST['stype'] == 1) { //TimeBack
-					$data = $wpdb->get_results("SELECT * FROM {$wpdb->prefix}stm_schedule WHERE templid=$_POST[templid] ORDER BY numschedule");
+					$data = $wpdb->get_results($wpdb->prepare("SELECT * FROM {$wpdb->prefix}stm_schedule WHERE templid=%d ORDER BY numschedule", $_POST['templid']));
 					foreach ($data as $k=>$info) {
 						$info = (array)$info;
 						$isec = $intsec + $info['intsec'];
-						$wpdb->query("INSERT INTO {$wpdb->prefix}stm_schedule (variationid, numschedule, numvar, intnum, inttype, repcount, repdone, repnum, reptype, intsec, repsec, accountid) VALUES ($variationid, $info[numschedule], $info[numvar], $info[intnum], '$info[inttype]', $info[repcount], $info[repdone], $info[repnum], '$info[reptype]', $isec, $info[repsec], $info[accountid]);");
+						$wpdb->query($wpdb->prepare("INSERT INTO {$wpdb->prefix}stm_schedule (variationid, numschedule, numvar, intnum, inttype, repcount, repdone, repnum, reptype, intsec, repsec, accountid) VALUES (%d, %d, $d, %d, %s, %d, %d, %d, %s, %d, %d, %d);", $variationid, $info['numschedule'], $info['numvar'], $info['intnum'], $info['inttype'], $info['repcount'], $info['repdone'], $info['repnum'], $info['reptype'], $isec, $info['repsec'], $info['accountid']));
 						if (!in_array($info['accountid'], $accarr)) $accarr[] = $info['accountid'];
 					}
 				}
 				if ($_POST['stype'] == 2) {
-					$wpdb->query("INSERT INTO {$wpdb->prefix}stm_schedule (variationid, numschedule, inttype, intnum, accountid, intsec) VALUES ($variationid, $i, '$inttype', $intnum,  $accountid, $intsec);");
+					$wpdb->query($wpdb->prepare("INSERT INTO {$wpdb->prefix}stm_schedule (variationid, numschedule, inttype, intnum, accountid, intsec) VALUES (%d, %d, %s, %d, %d, %d);", $variationid, $i, $inttype, $intnum,  $accountid, $intsec));
 					if (!in_array($accountid, $accarr)) $accarr[] = $accountid;
 				}
 				$numposts += $this->BuildTimeLine("variationid=$variationid");
@@ -2620,239 +2348,6 @@ class STMPlugin {
 	}
 
 
-
-	function BulkScheduleDo() {
-		global $wpdb;
-		if (isset($_POST['goAdd'])) {
-			if ($_POST['stype'] == 1) {
-				$inttype = $_POST['inttype2'];
-				$ifrom = $_POST['intfrom2'];
-				$ito = $_POST['intto2'];
-				$d = explode('.', $_POST['stmdate2']);
-				$h = explode(':', $_POST['stmhour2']);
-			}
-			else {
-				$inttype = $_POST['inttype'];
-				$ifrom = $_POST['intfrom'];
-				$ito = $_POST['intto'];
-				$d = explode('.', $_POST['stmdate']);
-				$h = explode(':', $_POST['stmhour']);
-			}
-			$starttm = mktime($h[0], $h[1], 0, $d[1], $d[0], $d[2]);
-			$starttm -= $this->UserOffset();
-			foreach ($_POST as $k=>$v) $_POST[$k] = addslashes($v);
-			$i = 1;
-			if ($inttype == 'm') $mult = 60;
-			if ($inttype == 'h') $mult = 3600;
-			if ($inttype == 'd') $mult = 24*3600;
-			$accountid = $_POST['accountid'];
-			$nexttm = $starttm;
-			$numposts = 0;
-			$intnum = 0;
-			$intsec = 0;
-			if ($_GET['schedule'] == 'sel') {
-				$marked = trim(get_settings('stmpostmarked'), ';');
-				$marked = str_replace(';', ',', $marked);
-				$q = " AND (ID in ($marked))";
-			}
-			if ($_GET['schedule'] == 'all') $q = '';
-			$mintime = 10000000000000;
-			$data = $wpdb->get_results("SELECT ID, post_date FROM {$wpdb->prefix}posts WHERE post_status='publish'$q;");
-			foreach ($data as $k=>$info) {
-				$info = (array)$info;
-				$ptime = strtotime($info['post_date']);
-				if ($ptime < $mintime) $mintime = $ptime;
-			}
-			$accarr = array();
-			$data = $wpdb->get_results("SELECT ID, post_date FROM {$wpdb->prefix}posts WHERE post_status='publish'$q;");
-			foreach ($data as $k=>$info) {
-				$info = (array)$info;
-				$postid = $info['ID'];
-				if (($_POST['stype'] == 1) && ($_POST['ityp'] == 1)) {
-					$ptime = strtotime($info['post_date']);
-					$intsec = $ptime - $mintime;
-					$nexttm = $starttm + $intsec;
-				}
-				if ($_POST['stype'] == 1) { //TimeBack
-					add_post_meta($postid, 'stmstarttime', $nexttm, true);
-					update_post_meta($postid, 'stmstarttime', $nexttm);
-					$data = $wpdb->get_results("SELECT * FROM {$wpdb->prefix}stm_schedule WHERE templid=$_POST[templid] ORDER BY numschedule");
-					foreach ($data as $k=>$info) {
-						$info = (array)$info;
-						$isec = $intsec + $info['intsec'];
-						//add variation if missing
-						if ($info['numvar'] < 200) $this->DefaultVariation($postid, $info['numvar']);
-						$wpdb->query("INSERT INTO {$wpdb->prefix}stm_schedule (postid, numschedule, numvar, intnum, inttype, repcount, repdone, repnum, reptype, intsec, repsec, accountid) VALUES ($postid, $info[numschedule], $info[numvar], $info[intnum], '$info[inttype]', $info[repcount], $info[repdone], $info[repnum], '$info[reptype]', $isec, $info[repsec], $info[accountid]);");
-						if (!in_array($info['accountid'], $accarr)) $accarr[] = $info['accountid'];
-					}
-				}
-				if ($_POST['stype'] == 2) {
-					$wpdb->query("INSERT INTO {$wpdb->prefix}stm_schedule (postid, numschedule, inttype, intnum, accountid, intsec) VALUES ($postid, $i, '$inttype', $intnum,  $accountid, $intsec);");
-					if (!in_array($accountid, $accarr)) $accarr[] = $accountid;
-				}
-				$numposts += $this->BuildTimeLine("postid=$postid");
-				if (($_POST['stype'] == 2) || ($_POST['ityp'] == 2)) {
-					$intnum = rand($ifrom, $ito);
-					$intsec = $intnum*$mult;
-					$nexttm += $intsec;
-				}
-				$i++;
-			}
-			$i--;
-			$numacc = count($accarr);
-			echo "
-				<div class='wrap'>
-					<div id='icon-edit-pages' class='icon32'></div>
-					<h2><img src='".STM_URL."images/logofull.png' align='absmiddle' class='logo' /> &nbsp; Add URLs from RSS</h2>
-					$numposts social posts scheduled for $i blog posts across $numacc social accounts.
-				</div>
-			";
-			return ;
-		}
-		if ($_GET['schedule'] == 'sel') {
-			$marked = trim(get_settings('stmpostmarked'), ';');
-			$stub = explode(';', $marked);
-			$t = 'Selected Posts ('.count($stub).')';
-		}
-		if ($_GET['schedule'] == 'all') $t = 'All Posts';
-		$dateformat = 'd.m.Y';
-		$timeformat = 'H:i';
-		$tm = $this->UserTime();
-		$stmdate = date($dateformat, $tm);
-		$stmhour = date($timeformat, $tm);
-		$html = $this->TopMsg()."
-			<div class='wrap'>
-				<div id='icon-edit-pages' class='icon32'></div>
-				<h2><img src='".STM_URL."images/logofull.png' align='absmiddle' class='logo' /> &nbsp; Bulk Schedule Posts
-					&nbsp;<a href='admin.php?page=stm' class='button add-new-h2'>Timeline</a>
-					&nbsp;<a href='admin.php?page=stm-scheduled' class='button add-new-h2'>Scheduled Posts</a>
-					&nbsp;<a href='admin.php?page=stm-postlog' class='button add-new-h2'>Post Log</a>
-					&nbsp;<a href='admin.php?page=stm-accounts' class='button add-new-h2'>Social Accounts</a>
-					&nbsp;<a href='admin.php?page=stm-templates' class='button add-new-h2'>Schedule Templates</a>
-					&nbsp;<a href='admin.php?page=stm-settings' class='button add-new-h2'>Settings</a>
-				</h2><br />
-				<div class='clear'></div>
-				<div id='resmsg'></div>
-				Schedule Sharing for <strong>$t</strong><br /><br />
-				<h3>Schedule Sharing</h3>
-				<form method='post'>
-					<input type='radio' name='stype' id='stype1' value='1' checked onclick=\"document.getElementById('opt1').style.display='block';document.getElementById('opt2').style.display='none';\" /> <label for='stype1'>TimeBack Schedule</label> <a href='http://wiziva.com/user/pluginhelp.html?id=".STM_WIZIVA_ID."&sub=29' target='_blank'><img src='".STM_URL."images/help.png' class='iconlink' align='absmiddle' title='click to read about TimeBack Schedule' /></a> &nbsp;&nbsp;
-					<input type='radio' name='stype' id='stype2' value='2' onclick=\"document.getElementById('opt1').style.display='none';document.getElementById('opt2').style.display='block';\" /> <label for='stype2'>Spread the postings across specified time interval </label><br /><br />
-					<div id='opt1'>
-						<table class='frm'>
-							<tr><td>Start Time:</td><td><input type='text' name='stmdate2' id='stmdate2' value='$stmdate' style='width: 100px;' /> <input type='text' name='stmhour2' id='stmhour2' value='$stmhour' style='width: 60px;' /></td></tr>
-							<tr><td>Template:</td><td>".$this->SelTemplate('templid')."</td></tr>
-							<tr><td valign='top'>Interval Between Posts:</td><td>
-								<input type='radio' name='ityp' id='ityp1' value='1' checked onclick=\"document.getElementById('opt').style.display='none';\" /> <label for='ityp1'>Use the Post Publish Date</label><br />
-								<input type='radio' name='ityp' id='ityp2' value='2' onclick=\"document.getElementById('opt').style.display='block';\" /> <label for='ityp2'>Random Interval</label>
-								<div id='opt' style='display: none;'>
-									<input type='text' name='intfrom2' value='1' style='width: 40px;' /> to <input type='text' name='intto2' value='2' style='width: 40px;' /> ".$this->SelIntType('inttype2', 'h')." (random)
-								</div>
-							</td></tr>
-						</table>
-					</div>
-					<div id='opt2' style='display: none;'>
-						<table class='frm'>
-							<tr><td>Account:</td><td>".$this->SelAccount('accountid', 0)."</td></tr>
-							<tr><td>Start Time:</td><td><input type='text' name='stmdate' id='stmdate' value='$stmdate' style='width: 100px;' /> <input type='text' name='stmhour' id='stmhour' value='$stmhour' style='width: 60px;' /></td></tr>
-							<tr><td>Interval Between Posts:</td><td><input type='text' name='intfrom' value='1' style='width: 40px;' /> to <input type='text' name='intto' value='2' style='width: 40px;' /> ".$this->SelIntType('inttype', 'h')." (random)</td></tr>
-						</table>
-					</div>
-					<br /><input class='button-primary' type='submit' name='goAdd' value='Submit' /><br /><br />
-				</form>
-				<script type='text/javascript'>	
-					jQuery(document).ready(function() {
-						jQuery('#stmdate').datepicker({ changeMonth: true, changeYear: true, dateFormat: 'dd.mm.yy', defaultDate: '$stmdate', dayNames: ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'], dayNamesMin: ['Su', 'Mo', 'Tu', 'We', 'Th', 'Fr', 'Sa'], firstDay: 1, monthNamesShort: ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'] });
-						jQuery('#stmdate2').datepicker({ changeMonth: true, changeYear: true, dateFormat: 'dd.mm.yy', defaultDate: '$stmdate', dayNames: ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'], dayNamesMin: ['Su', 'Mo', 'Tu', 'We', 'Th', 'Fr', 'Sa'], firstDay: 1, monthNamesShort: ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'] });
-						jQuery('#stmhour').timepicker();
-						jQuery('#stmhour2').timepicker();
-					});
-				</script>
-			</div>
-		".$this->Footer();
-		echo $html;
-	}
-
-
-	function BulkSchedule() {
-		global $wpdb;
-		if (isset($_GET['schedule'])) return $this->BulkScheduleDo();
-		if (isset($_POST['schedsel'])) die("<META HTTP-EQUIV='Refresh' Content='0; URL=admin.php?page=stm-scheduled&addpost=4&schedule=sel' />");
-		if (isset($_POST['schedall'])) die("<META HTTP-EQUIV='Refresh' Content='0; URL=admin.php?page=stm-scheduled&addpost=4&schedule=all' />");
-		if (isset($_POST['clearsel'])) update_option('stmpostmarked', '');
-		$html = $this->TopMsg()."
-			<div class='wrap'>
-				<div id='icon-edit-pages' class='icon32'></div>
-				<h2><img src='".STM_URL."images/logofull.png' align='absmiddle' class='logo' /> &nbsp; Bulk Schedule Posts
-					&nbsp;<a href='admin.php?page=stm' class='button add-new-h2'>Timeline</a>
-					&nbsp;<a href='admin.php?page=stm-scheduled' class='button add-new-h2'>Scheduled Posts</a>
-					&nbsp;<a href='admin.php?page=stm-postlog' class='button add-new-h2'>Post Log</a>
-					&nbsp;<a href='admin.php?page=stm-accounts' class='button add-new-h2'>Social Accounts</a>
-					&nbsp;<a href='admin.php?page=stm-templates' class='button add-new-h2'>Schedule Templates</a>
-					&nbsp;<a href='admin.php?page=stm-settings' class='button add-new-h2'>Settings</a>
-				</h2><br />
-				You can select some posts and then click the \"Schedule Selected\" button or you can click \"Schedule All\".<br />
-				When you click any of these 2 buttons you will go to a page where you will specify the scheduling details.<br /><br />
-				<div class='clear'></div>
-				<div id='resmsg'></div>
-		";
-		$qprop = $this->slPrepareQuerry('poststimeback', 'post_date', 'asc');
-		$data = $wpdb->get_results("SELECT ID, post_title, post_date FROM {$wpdb->prefix}posts WHERE post_status='publish' ORDER BY $qprop[order] $qprop[dir] LIMIT $qprop[start], $qprop[limit];");
-		if (!count($data)) {
-			echo $html."There are no blog posts yet!</div>".$this->Footer();
-			return '';
-		}
-		$html .= "
-			<form method='post'>
-			<input type='hidden' name='limit' id='limit' value='$qprop[limit]' />
-			<table class='wp-list-table widefat fixed pages' cellspacing='0' style='width: 95%; margin: 10px 0 7px 0;'>
-				<thead><tr>
-					<th scope='col' class='manage-column column-cb check-column'>&nbsp;</th>".
-					sprintf("<th scope='col' class='manage-column' style='width: 60px;'><a href='admin.php?page=stm-scheduled&addpost=4&order=ID'>Post ID</a>%s</th>", $qprop['order']=='ID'?$qprop['img']:'').
-					sprintf("<th scope='col' class='manage-column'><a href='admin.php?page=stm-scheduled&addpost=4&order=post_title'>Post Title</a>%s</th>", $qprop['order']=='post_title'?$qprop['img']:'').
-					"<th scope='col' class='manage-column' style='width: 60px;'>Pending Social Posts</th>".
-					sprintf("<th scope='col' class='manage-column' style='width: 180px;'><a href='admin.php?page=stm-scheduled&addpost=4&order=post_date'>Publish Date</a>%s</th>", $qprop['order']=='post_date'?$qprop['img']:'')."
-				</tr></thead>
-				<tbody>
-		";
-		$marked = get_settings('stmpostmarked');
-		foreach ($data as $k=>$info) {
-			$info = (array)$info;
-			$ch = strpos(' '.$marked, ";$info[ID];")?' checked':'';
-			$pend = $wpdb->get_var("SELECT SUM(repnum-repdone) FROM {$wpdb->prefix}stm_schedule WHERE (postid=$info[ID]) AND (repnum>0);");
-			if (!$pend) $pend = 0;
-			$pend += $wpdb->get_var("SELECT COUNT(id) FROM {$wpdb->prefix}stm_schedule WHERE (postid=$info[ID]) AND (repnum=0);");
-			$html .= "
-				<tr>
-					<td scope='row' class='check-column' style='text-align: center;'><input type='checkbox' name='godel[]' value='$info[ID]' onclick=\"AjaxActionSP('markpostforop&id=$info[ID]&stat='+this.checked);\"$ch /></td>
-					<td><a href='post.php?post=$info[ID]&action=edit' target='_blank'>$info[ID]</a></td>
-					<td><a href='post.php?post=$info[ID]&action=edit' target='_blank'>$info[post_title]</a></td>
-					<td style='text-align: center;'>$pend</td>
-					<td style='text-align: center;'>$info[post_date]</td>
-				</tr>
-			";
-		}
-		$numrecs = $wpdb->get_var("SELECT COUNT(ID) FROM {$wpdb->prefix}posts WHERE post_status='publish';");
-		$html .= "
-				</tbody>
-			</table><br />
-			<div style='width: 95%;'>
-				<div style='float: left;'>
-					<input class='button-primary' type='submit' name='schedsel' value='Schedule Selected' /> &nbsp;
-					<input class='button-primary' type='submit' name='schedall' value='Schedule All' />&nbsp;&nbsp;&nbsp;
-					<input class='button-secondary' type='submit' name='clearsel' value='Clear Selection' />
-				</div>
-				<div style='float: right;'>".$this->slPagesLinks($numrecs, $qprop['start'], $qprop['limit'], "admin.php?page=stm-scheduled&addpost=4", 1) . "</div>
-			</div>
-			</form>
-			<div class='clear'></div>
-			</div>
-		";
-		echo $html;
-	}
-
-
-
 	function AddFromRSS() {
 		global $wpdb;
 		$variationid = isset($_GET['varid'])?$_GET['varid']:0;
@@ -2915,19 +2410,19 @@ class STMPlugin {
 					$intsec = $ptime - $mintime;
 					$nexttm = $starttm + $intsec;
 				}
-				$wpdb->query("INSERT INTO {$wpdb->prefix}stm_variations (title, content, url, starttm) VALUES ('$title', '$content', '$url', $nexttm);");
+				$wpdb->query($wpdb->prepare("INSERT INTO {$wpdb->prefix}stm_variations (title, content, url, starttm) VALUES (%s, %s, %s, %d);", $title, $content, $url, $nexttm));
 				$variationid = $wpdb->insert_id;
 				if ($_POST['stype'] == 1) { //TimeBack
-					$data = $wpdb->get_results("SELECT * FROM {$wpdb->prefix}stm_schedule WHERE templid=$_POST[templid] ORDER BY numschedule");
+					$data = $wpdb->get_results($wpdb->prepare("SELECT * FROM {$wpdb->prefix}stm_schedule WHERE templid=%d ORDER BY numschedule;", $_POST['templid']));
 					foreach ($data as $k=>$info) {
 						$info = (array)$info;
 						$isec = $intsec + $info['intsec'];
-						$wpdb->query("INSERT INTO {$wpdb->prefix}stm_schedule (variationid, numschedule, numvar, intnum, inttype, repcount, repdone, repnum, reptype, intsec, repsec, accountid) VALUES ($variationid, $info[numschedule], $info[numvar], $info[intnum], '$info[inttype]', $info[repcount], $info[repdone], $info[repnum], '$info[reptype]', $isec, $info[repsec], $info[accountid]);");
+						$wpdb->query($wpdb->prepare("INSERT INTO {$wpdb->prefix}stm_schedule (variationid, numschedule, numvar, intnum, inttype, repcount, repdone, repnum, reptype, intsec, repsec, accountid) VALUES (%d, %d, %d, %d, %s, %d, %d, %d, %s, %d, %d, %d);", $variationid, $info['numschedule'], $info['numvar'], $info['intnum'], $info['inttype'], $info['repcount'], $info['repdone'], $info['repnum'], $info['reptype'], $isec, $info['repsec'], $info['accountid']));
 						if (!in_array($info['accountid'], $accarr)) $accarr[] = $info['accountid'];
 					}
 				}
 				if ($_POST['stype'] == 2) {
-					$wpdb->query("INSERT INTO {$wpdb->prefix}stm_schedule (variationid, numschedule, inttype, intnum, accountid, intsec) VALUES ($variationid, $i, '$inttype', $intnum,  $accountid, $intsec);");
+					$wpdb->query($wpdb->prepare("INSERT INTO {$wpdb->prefix}stm_schedule (variationid, numschedule, inttype, intnum, accountid, intsec) VALUES (%d, %d, %s, %d,  %d, %d);", $variationid, $i, $inttype, $intnum,  $accountid, $intsec));
 					if (!in_array($accountid, $accarr)) $accarr[] = $accountid;
 				}
 				$numposts += $this->BuildTimeLine("variationid=$variationid");
@@ -3025,17 +2520,17 @@ class STMPlugin {
 			foreach ($_POST as $k=>$v) $_POST[$k] = addslashes($v);
 			if (!$variationid) {
 				if (!$_POST['title']) $_POST['title'] = 'No Title';
-				$wpdb->query("INSERT INTO {$wpdb->prefix}stm_variations (title, content, imgurl, url, starttm) VALUES ('$_POST[title]', '$_POST[content]', '$_POST[imgurl]', '$_POST[url]', $starttm);");
+				$wpdb->query($wpdb->prepare("INSERT INTO {$wpdb->prefix}stm_variations (title, content, imgurl, url, starttm) VALUES (%s, %s, %s, %s, %d);", $_POST['title'], $_POST['content'], $_POST['imgurl'], $_POST['url'], $starttm));
 				$variationid = $wpdb->insert_id;
 			}
-			else $wpdb->query("UPDATE {$wpdb->prefix}stm_variations SET title='$_POST[title]', content='$_POST[content]', imgurl='$_POST[imgurl]', url='$_POST[url]', starttm=$starttm WHERE id=$variationid;");
-			$wpdb->query("UPDATE {$wpdb->prefix}stm_schedule SET fordel=1 WHERE variationid=$variationid;");
+			else $wpdb->query($wpdb->prepare("UPDATE {$wpdb->prefix}stm_variations SET title=%s, content=%s, imgurl=%s, url=%s, starttm=$starttm WHERE id=%d;", $_POST['title'], $_POST['content'], $_POST['imgurl'], $_POST['url'], $variationid));
+			$wpdb->query($wpdb->prepare("UPDATE {$wpdb->prefix}stm_schedule SET fordel=1 WHERE variationid=%d;", $variationid));
 			$i = 0;
 			foreach ($_POST as $k=>$v) if (substr($k, 0, 7) == 'intnum_') {
 				$i++;
-				$id = $wpdb->get_var("SELECT id FROM {$wpdb->prefix}stm_schedule WHERE (variationid=$variationid) AND (numschedule=$i)");
+				$id = $wpdb->get_var($wpdb->prepare("SELECT id FROM {$wpdb->prefix}stm_schedule WHERE (variationid=%d) AND (numschedule=%d);", $variationid, $i));
 				if (!$id) {
-					$wpdb->query("INSERT INTO {$wpdb->prefix}stm_schedule (variationid, numschedule) VALUES ($variationid, $i);");
+					$wpdb->query($wpdb->prepare("INSERT INTO {$wpdb->prefix}stm_schedule (variationid, numschedule) VALUES (%d, %d);", $variationid, $i));
 					$id = $wpdb->insert_id;
 				}
 				$intnum = $_POST["intnum_$i"];
@@ -3054,14 +2549,14 @@ class STMPlugin {
 				if ($reptype == 'm') $repsec = 60*$repnum;
 				if ($reptype == 'h') $repsec = 3600*$repnum;
 				if ($reptype == 'd') $repsec = 24*3600*$repnum;
-				$wpdb->query("UPDATE {$wpdb->prefix}stm_schedule SET intnum=$intnum, inttype='$inttype', accountid=$accountid, repcount=$repcount, repnum=$repnum, reptype='$reptype', intsec=$intsec, repsec=$repsec, fordel=0 WHERE id=$id;");
+				$wpdb->query($wpdb->prepare("UPDATE {$wpdb->prefix}stm_schedule SET intnum=%d, inttype=%s, accountid=%d, repcount=%d, repnum=%d, reptype=%s, intsec=%d, repsec=%d, fordel=0 WHERE id=%d;", $intnum, $inttype, $accountid, $repcount, $repnum, $reptype, $intsec, $repsec, $id));
 			}
 			$this->DelSchedules();
 			$this->BuildTimeLine("variationid=$variationid");
 		}
 		else {
 			if ($variationid) {
-				$res = $wpdb->get_results("SELECT title, content, imgurl, url, starttm FROM {$wpdb->prefix}stm_variations WHERE id=$variationid");
+				$res = $wpdb->get_results($wpdb->prepare("SELECT title, content, imgurl, url, starttm FROM {$wpdb->prefix}stm_variations WHERE id=%d", $variationid));
 				$info = (array)$res[0];
 				foreach ($info as $k=>$v) $_POST[$k] = $v;
 				$starttm = $info['starttm'] + $this->UserOffset();
@@ -3131,7 +2626,7 @@ class STMPlugin {
 		if (!$variationid) return '';
 		$i = 1;
 		$html = '';
-		$data = $wpdb->get_results("SELECT * FROM {$wpdb->prefix}stm_schedule WHERE variationid=$variationid ORDER BY intsec");
+		$data = $wpdb->get_results($wpdb->prepare("SELECT * FROM {$wpdb->prefix}stm_schedule WHERE variationid=%d ORDER BY intsec", $variationid));
 		foreach ($data as $k=>$info) {
 			$info = (array)$info;
 			$ch = $info['repnum']?' checked':'';
@@ -3165,9 +2660,9 @@ class STMPlugin {
 	function DelAccount($accid) {
 		global $wpdb;
 		if (!$accid) return ;
-		$data = $wpdb->get_results("SELECT id FROM {$wpdb->prefix}stm_schedule WHERE accountid=$accid;");
+		$data = $wpdb->get_results($wpdb->prepare("SELECT id FROM {$wpdb->prefix}stm_schedule WHERE accountid=%d;", $accid));
 		foreach ($data as $k=>$info) $this->DelSchedule($info->id);
-		$wpdb->query("DELETE FROM {$wpdb->prefix}stm_accounts WHERE id=$accid");
+		$wpdb->query($wpdb->prepare("DELETE FROM {$wpdb->prefix}stm_accounts WHERE id=%d;", $accid));
 	}
 
 
@@ -3180,7 +2675,7 @@ class STMPlugin {
 		}
         if (isset($_POST['DoPause'])) {
             foreach ($_POST['godel'] as $id)
-                $wpdb->query("UPDATE {$wpdb->prefix}stm_accounts SET paused=(NOT paused) WHERE id='$id'");
+                $wpdb->query($wpdb->prepare("UPDATE {$wpdb->prefix}stm_accounts SET paused=(NOT paused) WHERE id=%d;", $id));
 		}
         if (isset($_POST['DoDelete']) && isset($_POST['godel'])) {
             foreach ($_POST['godel'] as $id) $this->DelAccount($id);
@@ -3254,7 +2749,7 @@ class STMPlugin {
 			$auth = $info['auth3']?'[DONE]':"<span style='color: red;'>authenticate</span>";
 			$authid = $info['parentid']?$info['parentid']:$info['id'];
 			$auth = "<a href='admin.php?page=stm&doauth=$authid'>$auth</a>";
-			$pend = $wpdb->get_var("SELECT COUNT(id) FROM {$wpdb->prefix}stm_timeline WHERE accountid=$info[id];");
+			$pend = $wpdb->get_var($wpdb->prepare("SELECT COUNT(id) FROM {$wpdb->prefix}stm_timeline WHERE accountid=%d;", $info['id']));
 			$ed = $info['parentid']?'':"<img src='".STM_URL."images/edit.gif' align='absmiddle' class='icon' onclick=\"AjaxPopSP('addaccount&id=$info[id]');\" />";
 			$html .= "
 				<tr>
@@ -3300,18 +2795,18 @@ class STMPlugin {
 			elseif ($_POST['numschedules'] > 50) $err = 'You can not make more than 50 variations!';
 			else {
 				if (!$templid) {
-					$wpdb->query("INSERT INTO {$wpdb->prefix}stm_templates (title, numvars, numschedules) VALUES ('$_POST[title]', $_POST[numvars], $_POST[numschedules]);");
+					$wpdb->query($wpdb->prepare("INSERT INTO {$wpdb->prefix}stm_templates (title, numvars, numschedules) VALUES (%s, %d, %d);", $_POST['title'], $_POST['numvars'], $_POST['numschedules']));
 					$templid = $wpdb->insert_id;
 					$newtempl = 1;
 				}
-				else $wpdb->query("UPDATE {$wpdb->prefix}stm_templates SET title='$_POST[title]', numvars=$_POST[numvars], numschedules=$_POST[numschedules] WHERE id=$templid;");
+				else $wpdb->query($wpdb->prepare("UPDATE {$wpdb->prefix}stm_templates SET title=%s, numvars=%d, numschedules=%d WHERE id=$templid;", $_POST['title'], $_POST['numvars'], $_POST['numschedules']));
 				// save the schedules
 				$numposts = 0;
 				$accs = array();
 				for ($i=1; $i<=$_POST['numschedules']; $i++) {
-					$id = $wpdb->get_var("SELECT id FROM {$wpdb->prefix}stm_schedule WHERE (templid=$templid) AND (numschedule=$i)");
+					$id = $wpdb->get_var($wpdb->prepare("SELECT id FROM {$wpdb->prefix}stm_schedule WHERE (templid=%d) AND (numschedule=%d)", $templid, $i));
 					if (!$id) {
-						$wpdb->query("INSERT INTO {$wpdb->prefix}stm_schedule (templid, numschedule) VALUES ($templid, $i);");
+						$wpdb->query($wpdb->prepare("INSERT INTO {$wpdb->prefix}stm_schedule (templid, numschedule) VALUES (%d, %d);", $templid, $i));
 						$id = $wpdb->insert_id;
 					}
 					if (isset($_POST["intnum_$i"])) {
@@ -3335,18 +2830,18 @@ class STMPlugin {
 						if (!in_array($accountid, $accs)) $accs[] = $accountid;
 						$numposts++;
 						if ($repcount) $numposts += $repcount;
-						$wpdb->query("UPDATE {$wpdb->prefix}stm_schedule SET intnum=$intnum, inttype='$inttype', accountid=$accountid, numvar=$numvar, repcount=$repcount, repnum=$repnum, reptype='$reptype', intsec=$intsec, repsec=$repsec WHERE id=$id;");
+						$wpdb->query($wpdb->prepare("UPDATE {$wpdb->prefix}stm_schedule SET intnum=%d, inttype=%s, accountid=%d, numvar=%d, repcount=%d, repnum=%d, reptype=%s, intsec=%d, repsec=%d WHERE id=%d;", $intnum, $inttype, $accountid, $numvar, $repcount, $repnum, $reptype, $intsec, $repsec, $id));
 					}
 				}
-				$wpdb->query("DELETE FROM {$wpdb->prefix}stm_schedule WHERE (templid=$templid) AND (numschedule>$_POST[numschedules]);");
+				$wpdb->query($wpdb->prepare("DELETE FROM {$wpdb->prefix}stm_schedule WHERE (templid=%d) AND (numschedule>%d);", $templid, $_POST['numschedules']));
 				$numaccounts = count($accs);
-				$wpdb->query("UPDATE {$wpdb->prefix}stm_templates SET numaccounts=$numaccounts, numposts=$numposts WHERE id=$templid;");
+				$wpdb->query($wpdb->prepare("UPDATE {$wpdb->prefix}stm_templates SET numaccounts=%d, numposts=%d WHERE id=%d;", $numaccounts, $numposts, $templid));
 				// sort schedules by time
 				$counter = 1;
-				$data = $wpdb->get_results("SELECT id FROM {$wpdb->prefix}stm_schedule WHERE templid=$templid ORDER BY intsec ASC;");
+				$data = $wpdb->get_results($wpdb->prepare("SELECT id FROM {$wpdb->prefix}stm_schedule WHERE templid=%d ORDER BY intsec ASC;", $templid));
 				foreach ($data as $k=>$info) {
 					$info = (array)$info;
-					$wpdb->query("UPDATE {$wpdb->prefix}stm_schedule SET numschedule=$counter WHERE id=$info[id];");
+					$wpdb->query($wpdb->prepare("UPDATE {$wpdb->prefix}stm_schedule SET numschedule=%d WHERE id=%d;", $counter, $info['id']));
 					$counter++;
 				}
 			}
@@ -3358,7 +2853,7 @@ class STMPlugin {
 		if ($templid) {
 			$t = 'Edit Template';
 			if (!isset($_POST['dosave'])) {
-				$data = $wpdb->get_results("SELECT * FROM {$wpdb->prefix}stm_templates WHERE id=$templid;");
+				$data = $wpdb->get_results($wpdb->prepare("SELECT * FROM {$wpdb->prefix}stm_templates WHERE id=%d;", $templid));
 				$info = (array)$data[0];
 				foreach ($info as $k=>$v) $_POST[$k] = $v;
 			}
@@ -3394,7 +2889,7 @@ class STMPlugin {
 				<h2>Edit Schedules</h2>
 		";
 		for ($i=1; $i<=$_POST['numschedules']; $i++) {
-			$data = $wpdb->get_results("SELECT * FROM {$wpdb->prefix}stm_schedule WHERE (templid<>0) AND (templid=$templid) AND (numschedule=$i);");
+			$data = $wpdb->get_results($wpdb->prepare("SELECT * FROM {$wpdb->prefix}stm_schedule WHERE (templid<>0) AND (templid=%d) AND (numschedule=%d);", $templid, $i));
 			if (count($data)) {
 				$info = (array)$data[0];
 				foreach ($info as $k=>$v) $_POST[$k."_$i"] = $v;
@@ -3449,14 +2944,14 @@ class STMPlugin {
 			}
 		}
 		if (isset($_GET['del'])) {
-			$wpdb->query("DELETE FROM {$wpdb->prefix}stm_schedule WHERE templid='$_GET[del]'");
-			$wpdb->query("DELETE FROM {$wpdb->prefix}stm_templates WHERE id='$_GET[del]'");
+			$wpdb->query($wpdb->prepare("DELETE FROM {$wpdb->prefix}stm_schedule WHERE templid=%d;", $_GET['del']));
+			$wpdb->query($wpdb->prepare("DELETE FROM {$wpdb->prefix}stm_templates WHERE id=%d;", $_GET['del']));
 			$_GET['msg'] = 'del';
 		}
         if (isset($_POST['DoDelete']) && isset($_POST['godel'])) {
             foreach ($_POST['godel'] as $id) {
-                $wpdb->query("DELETE FROM {$wpdb->prefix}stm_schedule WHERE templid='$id'");
-                $wpdb->query("DELETE FROM {$wpdb->prefix}stm_templates WHERE id='$id'");
+                $wpdb->query($wpdb->prepare("DELETE FROM {$wpdb->prefix}stm_schedule WHERE templid=%d;", $id));
+                $wpdb->query($wpdb->prepare("DELETE FROM {$wpdb->prefix}stm_templates WHERE id=%d;", $id));
 			}
             die("<META HTTP-EQUIV='Refresh' Content='0; URL=admin.php?page=stm-templates&msg=dels' />");
         }
@@ -3534,12 +3029,6 @@ class STMPlugin {
 	}
 
 	
-	function CheckLicense($lcode) {
-		if (file_get_contents("http://wiziva.com/?checklicense=$lcode&p=".STM_WIZIVA_ID) == 'ok') return 1;
-		else return 0;
-	}
-
-
 	function Settings() {
 		global $wpdb;
 		$msg = '';
@@ -3547,7 +3036,6 @@ class STMPlugin {
 			update_option('stmbitly', $_POST['bitly']);
 			update_option('stmtwiuser', $_POST['twiuser']);
 			update_option('stmtwisite', $_POST['twisite']);
-			update_option('stmliccode', $_POST['liccode']);
 			update_option('stmcardformat', $_POST['cardformat']);
 			$hidehelp = isset($_POST['hidehelp'])?1:0;
 			update_option('stmhidehelp', $hidehelp);
@@ -3555,17 +3043,15 @@ class STMPlugin {
 			update_option('stmnocards', $nocards);
 			$noog = isset($_POST['noog'])?1:0;
 			update_option('stmnoog', $noog);
-			if ($this->CheckLicense($_POST['liccode'])) $msg = $this->Msg_OK('Settings saved!');
-			else $msg = $this->Msg_Err('Invalid License Code!');
+			$msg = $this->Msg_OK('Settings saved!');
 		}
-		$bitly = get_settings('stmbitly');
-		$twiuser = get_settings('stmtwiuser');
-		$twisite = get_settings('stmtwisite');
-		$hidehelp = get_settings('stmhidehelp');
-		$nocards = get_settings('stmnocards');
-		$noog = get_settings('stmnoog');
-		$liccode = get_settings('stmliccode');
-		$cardformat = get_settings('stmcardformat');
+		$bitly = get_option('stmbitly');
+		$twiuser = get_option('stmtwiuser');
+		$twisite = get_option('stmtwisite');
+		$hidehelp = get_option('stmhidehelp');
+		$nocards = get_option('stmnocards');
+		$noog = get_option('stmnoog');
+		$cardformat = get_option('stmcardformat');
 		$ch = $hidehelp?' checked':'';
 		$ch2 = $nocards?' checked':'';
 		$ch3 = $noog?' checked':'';
@@ -3584,8 +3070,6 @@ class STMPlugin {
 				<form method='post'>
 					<input type='hidden' name='dosave' value='1' />
 					<table class='frm'>
-						<tr><td>Plugin Version:</td><td><strong>".STM_PLUGIN_VERSION."</strong> &nbsp; (<a href='admin.php?page=stm&autoupdate=1'>check for updates</a>)</td></tr>
-						<tr><td>License Code:</td><td><input type='text' name='liccode' id='liccode' style='width: 120px;' value='$liccode' /></td></tr>
 						<tr><td>Twitter Cards Format:</td><td colspan='2'>".$this->SelCardFormat('cardformat', $cardformat)."</td></tr>
 						<tr><td>Twitter User:</td><td><input type='text' name='twiuser' id='twiuser' style='width: 150px;' value='$twiuser' /></td><td rowspan='2'>These details will be<br />used for the Twitter Cards.</td></tr>
 						<tr><td>Twitter Site:</td><td><input type='text' name='twisite' id='twisite' style='width: 150px;' value='$twisite' /></td></tr>
@@ -3610,7 +3094,7 @@ class STMPlugin {
 			<div id='dim' onclick=\"AjaxLoadedSP();\"></div>
 			<div id='dialog-main' title='' style='display: none;'></div>
 		";
-		if (!$showhelp || get_settings('stmhidehelp')) return $html;
+		if (!$showhelp || get_option('stmhidehelp')) return $html;
 		$html .= "
 			<div id='basketbox' style='right: -225px;' onmouseover='ShowBasket();' onmouseout='HideBasket();'>
 				<a href='#' onclick=\"AjaxPopSP('pophelp&sub=about');\">Overview & Quick Start</a>
@@ -3743,7 +3227,7 @@ class STMPlugin {
 	function SelAccount($fld, $val) {
 		global $wpdb;
 		$html = "<select name='$fld' id='$fld'><option value='0'></option>";
-		$data = $wpdb->get_results("SELECT id, atype, username FROM {$wpdb->prefix}stm_accounts WHERE 1 ORDER BY atype");
+		$data = $wpdb->get_results("SELECT id, atype, username FROM {$wpdb->prefix}stm_accounts WHERE 1 ORDER BY atype;");
 		foreach ($data as $k=>$info) {
 			$info = (array)$info;
 			$info['atype'] = ucfirst($info['atype']);
@@ -3769,7 +3253,7 @@ class STMPlugin {
 	function SelTemplate($fld, $val=0) {
 		global $wpdb;
 		$html = "<select name='$fld' id='$fld'>";
-		$data = $wpdb->get_results("SELECT id, title FROM {$wpdb->prefix}stm_templates WHERE 1 ORDER BY title");
+		$data = $wpdb->get_results("SELECT id, title FROM {$wpdb->prefix}stm_templates WHERE 1 ORDER BY title;");
 		foreach ($data as $k=>$info) {
 			$info = (array)$info;
 			$html .= sprintf("<option value='$info[id]'%s>$info[title]</option>", ($val==$info['id'])?' selected':'');
@@ -3790,19 +3274,19 @@ class STMPlugin {
 		$dname = $name . 'dir';
 		$oname = $name . 'order';
 		$limit = 20;
-		if ($stub = get_settings('stmlimit'.$name)) $limit = $stub;
+		if ($stub = get_option('stmlimit'.$name)) $limit = $stub;
 		if (isset($_POST['limit']) && ($limit != $_POST['limit'])) $_GET['start'] = 0;
 		if (isset($_POST['limit'])) $limit = $_POST['limit'];
 		elseif (isset($_GET['limit'])) $limit = $_GET['limit'];
 		if (isset($_GET['start'])) $start = $_GET['start'];
 		else $start = 0;
-		if ($stub = get_settings('stmdir'.$name)) $dir = $stub;
+		if ($stub = get_option('stmdir'.$name)) $dir = $stub;
 		else $dir = $defaultdir;
 		if (isset($_GET['order'])) {
-			if (($stub = get_settings('stmord'.$name)) && ($stub == $_GET['order'])) $dir = ($dir == 'desc') ? 'asc' : 'desc';
+			if (($stub = get_option('stmord'.$name)) && ($stub == $_GET['order'])) $dir = ($dir == 'desc') ? 'asc' : 'desc';
 			$order = $_GET['order'];
 		}
-		elseif ($stub = get_settings('stmord'.$name)) $order = $stub;
+		elseif ($stub = get_option('stmord'.$name)) $order = $stub;
 		else $order = $defaultsort;
 		update_option('stmord'.$name, $order);
 		update_option('stmdir'.$name, $dir);
@@ -3882,7 +3366,7 @@ class STMPlugin {
 	function SelBlogPost($fld, $val, $addstr='') {
 		global $wpdb;
 		$html = "<select name='$fld' id='$fld' $addstr><option value='0'></option>";
-		$data = $wpdb->get_results("SELECT ID, post_title FROM {$wpdb->prefix}posts WHERE (post_status='publish') AND (post_title<>'') ORDER BY post_title");
+		$data = $wpdb->get_results("SELECT ID, post_title FROM {$wpdb->prefix}posts WHERE (post_status='publish') AND (post_title<>'') ORDER BY post_title;");
 		foreach ($data as $k=>$info) {
 			$info = (array)$info;
 			$info['post_title'] = $this->LimitLength($info['post_title'], 70);
@@ -3906,9 +3390,6 @@ class STMPlugin {
 		if ($accpage!='accounts') {
 			$noauth = $wpdb->get_var("SELECT id FROM {$wpdb->prefix}stm_accounts WHERE auth3='';");
 			if ($noauth) $html .= "<div class='topmsg'>Social Time Master Message: You have social <strong>accounts which are not authorized</strong>! <a href='admin.php?page=stm-accounts'>CLICK HERE</a> to fix this problem!</div>";
-		}
-		if (get_settings('stmhasnewver')) {
-			$html .= "<div class='topmsg'>Social Time Master Message: There is a new version of Social Time Master</strong>! <a href='admin.php?page=stm&autoupdate=1'>CLICK HERE</a> to see what's new and to run the updater!</div>";
 		}
 		return $html;
 	}

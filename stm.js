@@ -459,7 +459,6 @@ function ddInit(e, obj) {
 	whichDog = obj;
 	ToTop();
 	dragid = whichDog.id.replace('timel_', '');
-	dragptobj = document.getElementById('ptime_'+dragid);
 	dragptsobj = document.getElementById('ptimeshow_'+dragid);
 	e = e || window.event;
 	offsetx = findPosX(e);
@@ -482,7 +481,6 @@ function dd(e) {
 	if ((t >= 0) && (t<=1440*numdays)) {
 		whichDog.style.top = t+'px';
 		tm = starttm + (3600*t/pxpersec);
-		dragptobj.value = tm + usertmoffset;
 		dragptsobj.innerHTML = FormatTime(tm)+'<span></span>';
 		InPreferred(whichDog);
 	}
@@ -719,7 +717,6 @@ function DistrEvenlyPerDay(prefonly, perday) {
 			if (globalnoanim) document.getElementById(fullid).style.top = t + 'px';
 			else jQuery('#'+fullid).animate({top:t}, 200);
 			tm = starttm + (3600*t/pxpersec);
-			document.getElementById('ptime_'+nid).value = tm;
 			document.getElementById('ptimeshow_'+nid).innerHTML = FormatTime(tm)+'<span></span>';
 			t += pxperel;
 		}
@@ -759,7 +756,6 @@ function DistrEvenly(prefonly, perday) {
 			if (globalnoanim) document.getElementById(fullid).style.top = t + 'px';
 			else jQuery('#'+fullid).animate({top:t}, 200);
 			tm = starttm + (3600*t/pxpersec);
-			document.getElementById('ptime_'+nid).value = tm;
 			document.getElementById('ptimeshow_'+nid).innerHTML = FormatTime(tm)+'<span></span>';
 			t += pxperel;
 			stubh = ((numday-1)*dh) + pt+ph;
@@ -795,7 +791,6 @@ function DistrEvenly(prefonly, perday) {
 		if (globalnoanim) document.getElementById(fullid).style.top = t + 'px';
 		else jQuery('#'+fullid).animate({top:t}, 200);
 		tm = starttm + (3600*t/pxpersec);
-		document.getElementById('ptime_'+nid).value = tm;
 		document.getElementById('ptimeshow_'+nid).innerHTML = FormatTime(tm)+'<span></span>';
 		t += pxperel;
 	}
@@ -834,7 +829,6 @@ function DistrRandom(dtype, deviation, intfrom, intto, prefonly) {
 			if (globalnoanim) document.getElementById(fullid).style.top = t + 'px';
 			else jQuery('#'+fullid).animate({top:t}, 200);
 			tm = starttm + (3600*t/pxpersec);
-			document.getElementById('ptime_'+nid).value = tm;
 			document.getElementById('ptimeshow_'+nid).innerHTML = FormatTime(tm)+'<span></span>';
 			int = intfrom + dif*(Math.random()); //in minutes
 			t += parseInt(pxpersec*(int/60));
@@ -872,7 +866,6 @@ function DistrRandom(dtype, deviation, intfrom, intto, prefonly) {
 			if (globalnoanim) document.getElementById(fullid).style.top = t + 'px';
 			else jQuery('#'+fullid).animate({top:t}, 200);
 			tm = starttm + (3600*t/pxpersec);
-			document.getElementById('ptime_'+nid).value = tm;
 			document.getElementById('ptimeshow_'+nid).innerHTML = FormatTime(tm)+'<span></span>';
 			remainel = numels-i;
 			pxperel = remainh/remainel;
