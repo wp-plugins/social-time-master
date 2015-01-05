@@ -28,7 +28,7 @@ if ($int_wp_version >= 300000000 && 		// Wordpress version > 3.0
 	define('STM_URL_Encoded', urlencode(plugins_url('/', __FILE__)));
 	define('STM_PLUGIN_NAME' , 'Social Time Master');
 	define('STM_PLUGIN_SLUG' , 'stm');
-	define('STM_PLUGIN_VERSION' , '1.0.0');
+	define('STM_PLUGIN_VERSION' , '1.0.5');
 	define('STM_WIZIVA_ID' , 264);
 	require_once(dirname(__FILE__).'/class.main.php');
 	$stmplugin = new STMPlugin();

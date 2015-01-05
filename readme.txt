@@ -4,7 +4,7 @@ Donate link: http://webily.com/donate/
 Tags: install plugin, install theme, manage themes, manage plugins, bulk install
 Requires at least: 3.0.1
 Tested up to: 4.0
-Stable tag: 1.0.0
+Stable tag: 1.0.5
 License: GPLv2 or later
 License URI: http://www.gnu.org/licenses/gpl-2.0.html
 
@@ -53,13 +53,22 @@ and then import them to the Dashboard.
 
 == Changelog ==
 
+= 1.0.5 =
+- deprecated WP functions replaced;
+- fixed the bug where it breaks the Post editor sometimes; 
+- improved loading of external files (JS, CSS).
+- Bugs fixed where the plugin breaks the page content.
+
 = 1.0.0 =
 * First Release
 
 == Upgrade Notice ==
 
-= 1.0.0 =
-Manage a portfolio of your favorite plugins and themes and easily install them in bulk.
+= 1.0.5 =
+- deprecated WP functions replaced;
+- fixed the bug where it breaks the Post editor sometimes; 
+- improved loading of external files (JS, CSS).
+- Bugs fixed where the plugin breaks the page content.
 
 
 == Arbitrary section ==
