@@ -264,7 +264,7 @@ class STMPlugin {
 			if ($imgurl) $imgurl = $this->GetBetweenTags($imgurl, 'src="', '"');
 			$title = get_the_title($postid);
 			$content = get_the_excerpt();
-			if (!$content) $content = the_content();
+			if (!$content) $content = get_the_content();
 			if ($content) $content = $this->LimitLength($content, 120);
 			else $content = $title;
 		}
